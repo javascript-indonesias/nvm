@@ -199,15 +199,23 @@ nvm_install_latest_npm() {
 
   if [ $NVM_IS_0_9 -eq 1 ] || [ $NVM_IS_0_6 -eq 1 ]; then
     nvm_echo '* node v0.6 and v0.9 are unable to upgrade further'
-  elif nvm_version_greater 1.0.0 "${NODE_VERSION}"; then
-    nvm_echo '* `npm` v4.5.x is the last version that works on `node` versions below v1.0.0'
+  elif nvm_version_greater_than_or_equal_to 1.0.0 "${NODE_VERSION}"; then
+    nvm_echo '* `npm` v4.5.x is the last version that works on `node` versions <= v1.0.0'
     $NVM_NPM_CMD install -g npm@4.5
   elif nvm_version_greater 4.0.0 "${NODE_VERSION}"; then
     nvm_echo '* `npm` v5 and higher do not work on `node` versions below v4.0.0'
     $NVM_NPM_CMD install -g npm@4
   elif [ $NVM_IS_0_9 -eq 0 ] && [ $NVM_IS_0_6 -eq 0 ]; then
-    nvm_echo '* Installing latest `npm`; if this does not work on your node version, please report a bug!'
-    $NVM_NPM_CMD install -g npm
+    if nvm_version_greater 4.5.0 "${NODE_VERSION}" || (\
+      nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 5.0.0 \
+      && nvm_version_greater 5.10.0 "${NODE_VERSION}"\
+    ); then
+      nvm_echo '* `npm` `v5.3.x` is the last version that works on `node` 4.x versions below v4.4, or 5.x versions below v5.10, due to `Buffer.alloc`'
+      $NVM_NPM_CMD install -g npm@5.3
+    else
+      nvm_echo '* Installing latest `npm`; if this does not work on your node version, please report a bug!'
+      $NVM_NPM_CMD install -g npm
+    fi
   fi
   nvm_echo "* npm upgraded to: v$(npm --version 2>/dev/null)"
 }
@@ -3360,7 +3368,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" )
-      nvm_echo '0.33.2'
+      nvm_echo '0.33.4'
     ;;
     "unload" )
       nvm deactivate >/dev/null 2>&1
