@@ -1,4 +1,4 @@
-# Node Version Manager [![Build Status](https://travis-ci.org/creationix/nvm.svg?branch=master)][3] [![nvm version](https://img.shields.io/badge/version-v0.33.5-yellow.svg)][4] [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/684/badge)](https://bestpractices.coreinfrastructure.org/projects/684)
+# Node Version Manager [![Build Status](https://travis-ci.org/creationix/nvm.svg?branch=master)][3] [![nvm version](https://img.shields.io/badge/version-v0.33.6-yellow.svg)][4] [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/684/badge)](https://bestpractices.coreinfrastructure.org/projects/684)
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
@@ -41,13 +41,13 @@
 To install or update nvm, you can use the [install script][2] using cURL:
 
 ```sh
-curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.5/install.sh | bash
+curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.6/install.sh | bash
 ```
 
 or Wget:
 
 ```sh
-wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.33.5/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.33.6/install.sh | bash
 ```
 
 <sub>The script clones the nvm repository to `~/.nvm` and adds the source line to your profile (`~/.bash_profile`, `~/.zshrc`, `~/.profile`, or `~/.bashrc`).</sub>
@@ -127,7 +127,7 @@ If you have `git` installed (requires git v1.7+):
 
 1. clone this repo in the root of your user profile
   - `cd ~/` from anywhere then `git clone https://github.com/creationix/nvm.git .nvm`
-2. `cd ~/.nvm` and check out the latest version with `git checkout v0.33.5`
+2. `cd ~/.nvm` and check out the latest version with `git checkout v0.33.6`
 3. activate nvm by sourcing it from your shell: `. nvm.sh`
 
 Now add these lines to your `~/.bashrc`, `~/.profile`, or `~/.zshrc` file to have it automatically sourced upon login:
@@ -487,7 +487,7 @@ If installing nvm on Alpine Linux *is* still what you want or need to do, you sh
 
 ```sh
 apk add -U curl bash ca-certificates openssl ncurses coreutils python2 make gcc g++ libgcc linux-headers grep util-linux binutils findutils
-curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.5/install.sh | bash
+curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.6/install.sh | bash
 ```
 
 The Node project has some desire but no concrete plans (due to the overheads of building, testing and support) to offer Alpine-compatible binaries.
@@ -519,7 +519,7 @@ $ docker run -it nvm-dev -h nvm-dev
 nvm@nvm-dev:~/.nvm$
 ```
 
-Please note that it'll take about 15 minutes to build the image and the image size would be about 1.2GB, so it's not sutable for production usage.
+Please note that it'll take about 15 minutes to build the image and the image size would be about 1.2GB, so it's not suitable for production usage.
 
 For more information and documentation about docker, please refer to its official website:
  - https://www.docker.com/
@@ -527,7 +527,7 @@ For more information and documentation about docker, please refer to its officia
 
 ## Problems
 
- - If you try to install a node version and the installation fails, be sure to delete the node downloads from src (~/.nvm/src/) or you might get an error when trying to reinstall them again or you might get an error like the following:
+ - If you try to install a node version and the installation fails, be sure to delete the node downloads from src (`~/.nvm/src/`) or you might get an error when trying to reinstall them again or you might get an error like the following:
 
     curl: (33) HTTP server doesn't seem to support byte ranges. Cannot resume.
 
@@ -539,7 +539,7 @@ For more information and documentation about docker, please refer to its officia
 nvm install -s 0.8.6
 ```
 
- - If setting the `default` alias does not establish the node version in new shells (i.e. `nvm current` yields `system`), ensure that the system's node PATH is set before the `nvm.sh` source line in your shell profile (see [#658](https://github.com/creationix/nvm/issues/658))
+ - If setting the `default` alias does not establish the node version in new shells (i.e. `nvm current` yields `system`), ensure that the system's node `PATH` is set before the `nvm.sh` source line in your shell profile (see [#658](https://github.com/creationix/nvm/issues/658))
 
 ## Mac OS "troubleshooting"
 
@@ -554,8 +554,8 @@ sudo chmod ugo-x /usr/libexec/path_helper
 More on this issue in [dotphiles/dotzsh](https://github.com/dotphiles/dotzsh#mac-os-x).
 
 [1]: https://github.com/creationix/nvm.git
-[2]: https://github.com/creationix/nvm/blob/v0.33.5/install.sh
+[2]: https://github.com/creationix/nvm/blob/v0.33.6/install.sh
 [3]: https://travis-ci.org/creationix/nvm
-[4]: https://github.com/creationix/nvm/releases/tag/v0.33.5
+[4]: https://github.com/creationix/nvm/releases/tag/v0.33.6
 [Urchin]: https://github.com/scraperwiki/urchin
 [Fish]: http://fishshell.com
