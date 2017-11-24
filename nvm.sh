@@ -13,13 +13,7 @@
 NVM_SCRIPT_SOURCE="$_"
 
 nvm_echo() {
-  command printf %s\\n "$*" 2>/dev/null || {
-    nvm_echo() {
-      # shellcheck disable=SC1001
-      \printf %s\\n "$*" # on zsh, `command printf` sometimes fails
-    }
-    nvm_echo "$@"
-  }
+  command printf %s\\n "$*" 2>/dev/null
 }
 
 nvm_cd() {
@@ -273,12 +267,12 @@ nvm_tree_contains_path() {
 
 # Traverse up in directory tree to find containing folder
 nvm_find_up() {
-  local path
-  path="${PWD}"
-  while [ "${path}" != "" ] && [ ! -f "${path}/${1-}" ]; do
-    path=${path%/*}
+  local path_
+  path_="${PWD}"
+  while [ "${path_}" != "" ] && [ ! -f "${path_}/${1-}" ]; do
+    path_=${path_%/*}
   done
-  nvm_echo "${path}"
+  nvm_echo "${path_}"
 }
 
 
@@ -514,7 +508,7 @@ nvm_remote_versions() {
   local NVM_LS_REMOTE_IOJS_EXIT_CODE
   NVM_LS_REMOTE_IOJS_EXIT_CODE=0
   local NVM_LS_REMOTE_IOJS_OUTPUT
-  NVM_LS_REMOTE_IOJS_OUTPUT=
+  NVM_LS_REMOTE_IOJS_OUTPUT=''
   if [ -z "${NVM_LTS-}" ] && ( \
     [ -z "${NVM_FLAVOR-}" ] || [ "${NVM_FLAVOR-}" = "${NVM_IOJS_PREFIX}" ] \
   ); then
@@ -2908,6 +2902,7 @@ nvm() {
         command rm -f "$NVM_DIR/current" && ln -s "$NVM_VERSION_DIR" "$NVM_DIR/current"
       fi
       local NVM_USE_OUTPUT
+      NVM_USE_OUTPUT=''
       if [ $NVM_USE_SILENT -ne 1 ]; then
         if nvm_is_iojs_version "$VERSION"; then
           NVM_USE_OUTPUT="Now using io.js $(nvm_strip_iojs_prefix "$VERSION")$(nvm_print_npm_version)"
