@@ -2277,7 +2277,7 @@ nvm() {
   fi
 
   local DEFAULT_IFS
-  DEFAULT_IFS=" $(echo t | tr t \\t)
+  DEFAULT_IFS=" $(echo t | command tr t \\t)
 "
   if [ "${IFS}" != "${DEFAULT_IFS}" ]; then
     IFS="${DEFAULT_IFS}" nvm "$@"
@@ -2397,6 +2397,8 @@ nvm() {
         nvm_err "\$TERM_PROGRAM: $TERM_PROGRAM"
       fi
       nvm_err "\$SHELL: $SHELL"
+      # shellcheck disable=SC2169
+      nvm_err "\$SHLVL: ${SHLVL-}"
       nvm_err "\$HOME: $HOME"
       nvm_err "\$NVM_DIR: '$(nvm_sanitize_path "$NVM_DIR")'"
       nvm_err "\$PREFIX: '$(nvm_sanitize_path "$PREFIX")'"
@@ -2661,12 +2663,12 @@ nvm() {
         if [ "_$NVM_OS" = "_freebsd" ]; then
           # node.js and io.js do not have a FreeBSD binary
           nobinary=1
-          nvm_err "Currently, there is no binary for $NVM_OS"
+          nvm_err "Currently, there is no binary for FreeBSD"
         elif [ "_$NVM_OS" = "_sunos" ]; then
           # Not all node/io.js versions have a Solaris binary
           if ! nvm_has_solaris_binary "$VERSION"; then
             nobinary=1
-            nvm_err "Currently, there is no binary of version $VERSION for $NVM_OS"
+            nvm_err "Currently, there is no binary of version $VERSION for SunOS"
           fi
         fi
 

@@ -58,7 +58,7 @@ export NVM_DIR="$HOME/.nvm"
 ```
 
 You can customize the install source, directory, profile, and version using the `NVM_SOURCE`, `NVM_DIR`, `PROFILE`, and `NODE_VERSION` variables.
-Eg: `curl ... | NVM_DIR=/usr/local/nvm bash` for a global install.
+Eg: `curl ... | NVM_DIR=/usr/local/nvm bash` for a global install. Ensure that the `NVM_DIR` does not contain a trailing slash.
 
 <sub>*NB. The installer can use `git`, `curl`, or `wget` to download `nvm`, whatever is available.*</sub>
 
@@ -514,7 +514,7 @@ This will package your current nvm repository with our pre-defiend development e
 $ docker images
 
 REPOSITORY         TAG                 IMAGE ID            CREATED             SIZE
-nvm-dev            latest              9ca4c57a97d8        7 days ago          1.22 GB
+nvm-dev            latest              9ca4c57a97d8        7 days ago          650 MB
 ```
 
 If you got no error message, now you can easily involve in:
@@ -525,7 +525,7 @@ $ docker run -it nvm-dev -h nvm-dev
 nvm@nvm-dev:~/.nvm$
 ```
 
-Please note that it'll take about 15 minutes to build the image and the image size would be about 1.2GB, so it's not suitable for production usage.
+Please note that it'll take about 8 minutes to build the image and the image size would be about 650MB, so it's not suitable for production usage.
 
 For more information and documentation about docker, please refer to its official website:
  - https://www.docker.com/
