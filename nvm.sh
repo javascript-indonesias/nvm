@@ -293,7 +293,7 @@ nvm_rc_version() {
     nvm_err "No .nvmrc file found"
     return 1
   fi
-  read -r NVM_RC_VERSION < "${NVMRC_PATH}" || command printf ''
+  NVM_RC_VERSION="$(command head -n 1 "${NVMRC_PATH}" | command tr -d '\r')" || command printf ''
   if [ ! -n "${NVM_RC_VERSION}" ]; then
     nvm_err "Warning: empty .nvmrc file found at \"${NVMRC_PATH}\""
     return 2
@@ -2383,6 +2383,7 @@ nvm() {
 
     "debug" )
       local ZSH_HAS_SHWORDSPLIT_UNSET
+      local OS_VERSION
       ZSH_HAS_SHWORDSPLIT_UNSET=1
       if nvm_has "setopt"; then
         ZSH_HAS_SHWORDSPLIT_UNSET="$(set +e ; setopt | nvm_grep -q shwordsplit ; nvm_echo $?)"
@@ -2405,9 +2406,16 @@ nvm() {
       nvm_err "shell version: '$(${SHELL} --version | command head -n 1)'"
       nvm_err "uname -a: '$(command uname -a | command awk '{$2=""; print}' | command xargs)'"
       if [ "$(nvm_get_os)" = "darwin" ] && nvm_has sw_vers; then
-        nvm_err "OS version: $(sw_vers | command awk '{print $2}' | command xargs)"
+        OS_VERSION="$(sw_vers | command awk '{print $2}' | command xargs)"
       elif [ -r "/etc/issue" ]; then
-        nvm_err "OS version: $(command head -n 1 /etc/issue | command sed 's/\\.//g')"
+        OS_VERSION="$(command head -n 1 /etc/issue | command sed 's/\\.//g')"
+        if [ -z "${OS_VERSION}" ] && [ -r "/etc/os-release" ] ; then
+          # shellcheck disable=SC1091
+          OS_VERSION="$(. /etc/os-release && echo "${NAME}" "${VERSION}")"
+        fi
+      fi
+      if [ -n "${OS_VERSION}" ]; then
+        nvm_err "OS version: ${OS_VERSION}"
       fi
       if nvm_has "curl"; then
         nvm_err "curl: $(nvm_command_info curl), $(command curl -V | command head -n 1)"
@@ -3413,7 +3421,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" )
-      nvm_echo '0.33.8'
+      nvm_echo '0.33.9'
     ;;
     "unload" )
       nvm deactivate >/dev/null 2>&1
