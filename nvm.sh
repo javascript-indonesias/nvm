@@ -48,7 +48,7 @@ nvm_command_info() {
   local INFO
   COMMAND="${1}"
   if type "${COMMAND}" | nvm_grep -q hashed; then
-    INFO="$(type "${COMMAND}" | command sed -E 's/\(|)//g' | command awk '{print $4}')"
+    INFO="$(type "${COMMAND}" | command sed -E 's/\(|\)//g' | command awk '{print $4}')"
   elif type "${COMMAND}" | nvm_grep -q aliased; then
     INFO="$(which "${COMMAND}") ($(type "${COMMAND}" | command awk '{ $1=$2=$3=$4="" ;print }' | command sed -e 's/^\ *//g' -Ee "s/\`|'//g" ))"
   elif type "${COMMAND}" | nvm_grep -q "^${COMMAND} is an alias for"; then
@@ -206,15 +206,29 @@ nvm_install_latest_npm() {
       NVM_IS_4_4_OR_BELOW=1
     fi
 
+    local NVM_IS_5_OR_ABOVE
+    NVM_IS_5_OR_ABOVE=0
+    if [ $NVM_IS_4_4_OR_BELOW -eq 0 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 5.0.0; then
+      NVM_IS_5_OR_ABOVE=1
+    fi
+
+    local NVM_IS_6_OR_ABOVE
+    NVM_IS_6_OR_ABOVE=0
+    if [ $NVM_IS_5_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 6.0.0; then
+      NVM_IS_6_OR_ABOVE=1
+    fi
+
     if [ $NVM_IS_4_4_OR_BELOW -eq 1 ] || (\
-      nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 5.0.0 \
-      && nvm_version_greater 5.10.0 "${NODE_VERSION}"\
+      [ $NVM_IS_5_OR_ABOVE -eq 1 ] && nvm_version_greater 5.10.0 "${NODE_VERSION}"\
     ); then
       nvm_echo '* `npm` `v5.3.x` is the last version that works on `node` 4.x versions below v4.4, or 5.x versions below v5.10, due to `Buffer.alloc`'
       $NVM_NPM_CMD install -g npm@5.3
     elif [ $NVM_IS_4_4_OR_BELOW -eq 0 ] && nvm_version_greater 4.7.0 "${NODE_VERSION}"; then
       nvm_echo '* `npm` `v5.4.x` is the last version that works on `node` `v4.5` and `v4.6`'
       $NVM_NPM_CMD install -g npm@5.4
+    elif [ $NVM_IS_6_OR_ABOVE -eq 0 ]; then
+      nvm_echo '* `npm` `v5.x` is the last version that works on `node` below `v6.0.0`'
+      $NVM_NPM_CMD install -g npm@5
     else
       nvm_echo '* Installing latest `npm`; if this does not work on your node version, please report a bug!'
       $NVM_NPM_CMD install -g npm
@@ -243,6 +257,15 @@ if [ -z "${NVM_DIR-}" ]; then
   # shellcheck disable=SC1001
   NVM_DIR="$(nvm_cd ${NVM_CD_FLAGS} "$(dirname "${NVM_SCRIPT_SOURCE:-$0}")" > /dev/null && \pwd)"
   export NVM_DIR
+else
+  # https://unix.stackexchange.com/a/198289
+  case $NVM_DIR in
+    *[!/]*/)
+      NVM_DIR="${NVM_DIR%"${NVM_DIR##*[!/]}"}"
+      export NVM_DIR
+      nvm_err "Warning: \$NVM_DIR should not have trailing slashes"
+    ;;
+  esac
 fi
 unset NVM_SCRIPT_SOURCE 2> /dev/null
 
@@ -747,25 +770,42 @@ nvm_list_aliases() {
   NVM_ALIAS_DIR="$(nvm_alias_path)"
   command mkdir -p "${NVM_ALIAS_DIR}/lts"
 
-  local ALIAS_PATH
-  for ALIAS_PATH in "${NVM_ALIAS_DIR}/${ALIAS}"*; do
-    NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_CURRENT="${NVM_CURRENT}" nvm_print_alias_path "${NVM_ALIAS_DIR}" "${ALIAS_PATH}"
-  done
+  (
+    local ALIAS_PATH
+    for ALIAS_PATH in "${NVM_ALIAS_DIR}/${ALIAS}"*; do
+      NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_CURRENT="${NVM_CURRENT}" nvm_print_alias_path "${NVM_ALIAS_DIR}" "${ALIAS_PATH}" &
+    done
+    wait
+  ) | sort
 
-  local ALIAS_NAME
-  for ALIAS_NAME in "$(nvm_node_prefix)" "stable" "unstable" "$(nvm_iojs_prefix)"; do
+  (
+    local ALIAS_NAME
+    for ALIAS_NAME in "$(nvm_node_prefix)" "stable" "unstable"; do
+      {
+        if [ ! -f "${NVM_ALIAS_DIR}/${ALIAS_NAME}" ] && ([ -z "${ALIAS}" ] || [ "${ALIAS_NAME}" = "${ALIAS}" ]); then
+          NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_CURRENT="${NVM_CURRENT}" nvm_print_default_alias "${ALIAS_NAME}"
+        fi
+      } &
+    done
+    wait
+    ALIAS_NAME="$(nvm_iojs_prefix)"
     if [ ! -f "${NVM_ALIAS_DIR}/${ALIAS_NAME}" ] && ([ -z "${ALIAS}" ] || [ "${ALIAS_NAME}" = "${ALIAS}" ]); then
       NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_CURRENT="${NVM_CURRENT}" nvm_print_default_alias "${ALIAS_NAME}"
     fi
-  done
+  ) | sort
 
-  local LTS_ALIAS
-  for ALIAS_PATH in "${NVM_ALIAS_DIR}/lts/${ALIAS}"*; do
-    LTS_ALIAS="$(NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_LTS=true nvm_print_alias_path "${NVM_ALIAS_DIR}" "${ALIAS_PATH}")"
-    if [ -n "${LTS_ALIAS}" ]; then
-      nvm_echo "${LTS_ALIAS}"
-    fi
-  done
+  (
+    local LTS_ALIAS
+    for ALIAS_PATH in "${NVM_ALIAS_DIR}/lts/${ALIAS}"*; do
+      {
+        LTS_ALIAS="$(NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_LTS=true nvm_print_alias_path "${NVM_ALIAS_DIR}" "${ALIAS_PATH}")"
+        if [ -n "${LTS_ALIAS}" ]; then
+          nvm_echo "${LTS_ALIAS}"
+        fi
+      } &
+    done
+    wait
+  ) | sort
   return
 }
 
@@ -3421,7 +3461,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" )
-      nvm_echo '0.33.9'
+      nvm_echo '0.33.10'
     ;;
     "unload" )
       nvm deactivate >/dev/null 2>&1
