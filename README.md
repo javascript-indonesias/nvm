@@ -54,8 +54,10 @@ wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.33.11/install.sh |
 
 <sub>The script clones the nvm repository to `~/.nvm` and adds the source line to your profile (`~/.bash_profile`, `~/.zshrc`, `~/.profile`, or `~/.bashrc`).</sub>
 
+<sub>**Note:** If the environment variable `$XDG_CONFIG_HOME` is present, it will place the `nvm` files there.</sub>
+
 ```sh
-export NVM_DIR="$HOME/.nvm"
+export NVM_DIR="${XDG_CONFIG_HOME/:-$HOME/.}nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
 ```
 
@@ -187,7 +189,19 @@ For manual upgrade with `git` (requires git v1.7.10+):
 To download, compile, and install the latest release of node, do this:
 
 ```sh
-nvm install node
+nvm install node # "node" is an alias for the latest version
+```
+
+To install a specific version of node:
+
+```sh
+nvm install 6.14.4 # or 10.10.0, 8.9.1, etc
+```
+
+You can list available versions using ls-remote:
+
+```sh
+nvm ls-remote
 ```
 
 And then in any new shell just use the installed version:
@@ -201,6 +215,7 @@ Or you can just run it:
 ```sh
 nvm run node --version
 ```
+
 Or, you can run any arbitrary command in a subshell with the desired version of node:
 
 ```sh
