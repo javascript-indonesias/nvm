@@ -1082,9 +1082,9 @@ nvm_ls() {
             \\#${SEARCH_PATTERN}# !d;
           " \
           -e 's#^\([^/]\{1,\}\)/\(.*\)$#\2.\1#;' \
-          -e 's#\(.*\)\.\([^\.]\{1,\}\)$#\2-\1#;' \
-          -e "s#^${NVM_NODE_PREFIX}-##;" \
         | command sort -t. -u -k 1.2,1n -k 2,2n -k 3,3n \
+        | command sed -e 's#\(.*\)\.\([^\.]\{1,\}\)$#\2-\1#;' \
+                      -e "s#^${NVM_NODE_PREFIX}-##;" \
       )"
     fi
   fi
@@ -1433,6 +1433,8 @@ nvm_print_versions() {
     elif [ "${VERSION}" = "system" ]; then
       if [ "${NVM_HAS_COLORS-}" = '1' ]; then
         FORMAT='\033[0;33m%15s\033[0m'
+      else
+        FORMAT='%15s *'
       fi
     elif nvm_is_version_installed "${VERSION}"; then
       if [ "${NVM_HAS_COLORS-}" = '1' ]; then
@@ -2298,7 +2300,14 @@ nvm() {
   local DEFAULT_IFS
   DEFAULT_IFS=" $(nvm_echo t | command tr t \\t)
 "
-  if [ "${IFS}" != "${DEFAULT_IFS}" ]; then
+  if [ "${-#*e}" != "$-" ]; then
+    set +e
+    local EXIT_CODE
+    IFS="${DEFAULT_IFS}" nvm "$@"
+    EXIT_CODE=$?
+    set -e
+    return $EXIT_CODE
+  elif [ "${IFS}" != "${DEFAULT_IFS}" ]; then
     IFS="${DEFAULT_IFS}" nvm "$@"
     return $?
   fi
@@ -2317,8 +2326,9 @@ nvm() {
       NVM_IOJS_PREFIX="$(nvm_iojs_prefix)"
       local NVM_NODE_PREFIX
       NVM_NODE_PREFIX="$(nvm_node_prefix)"
+      NVM_VERSION="$(nvm --version)"
       nvm_echo
-      nvm_echo "Node Version Manager"
+      nvm_echo "Node Version Manager (v${NVM_VERSION})"
       nvm_echo
       nvm_echo 'Note: <version> refers to any version-like string nvm understands. This includes:'
       nvm_echo '  - full or partial version numbers, starting with an optional "v" (0.10, v0.1.2, v1)'
@@ -2350,19 +2360,20 @@ nvm() {
       nvm_echo '    --lts                                   Uses automatic LTS (long-term support) alias `lts/*`, if available.'
       nvm_echo '    --lts=<LTS name>                        Uses automatic alias for provided LTS line, if available.'
       nvm_echo '  nvm current                               Display currently activated version of Node'
-      nvm_echo '  nvm ls                                    List installed versions'
-      nvm_echo '  nvm ls <version>                          List versions matching a given <version>'
-      nvm_echo '  nvm ls-remote                             List remote versions available for install'
-      nvm_echo '    --lts                                   When listing, only show LTS (long-term support) versions'
-      nvm_echo '  nvm ls-remote <version>                   List remote versions available for install, matching a given <version>'
+      nvm_echo '  nvm ls [<version>]                        List installed versions, matching a given <version> if provided'
+      nvm_echo '    --no-colors                             Suppress colored output'
+      nvm_echo '    --no-alias                              Suppress `nvm alias` output'
+      nvm_echo '  nvm ls-remote [<version>]                 List remote versions available for install, matching a given <version> if provided'
       nvm_echo '    --lts                                   When listing, only show LTS (long-term support) versions'
       nvm_echo '    --lts=<LTS name>                        When listing, only show versions for a specific LTS line'
+      nvm_echo '    --no-colors                             Suppress colored output'
       nvm_echo '  nvm version <version>                     Resolve the given description to a single local version'
       nvm_echo '  nvm version-remote <version>              Resolve the given description to a single remote version'
       nvm_echo '    --lts                                   When listing, only select from LTS (long-term support) versions'
       nvm_echo '    --lts=<LTS name>                        When listing, only select from versions for a specific LTS line'
       nvm_echo '  nvm deactivate                            Undo effects of `nvm` on current shell'
       nvm_echo '  nvm alias [<pattern>]                     Show all aliases beginning with <pattern>'
+      nvm_echo '    --no-colors                             Suppress colored output'
       nvm_echo '  nvm alias <name> <version>                Set an alias named <name> pointing to <version>'
       nvm_echo '  nvm unalias <name>                        Deletes the alias named <name>'
       nvm_echo '  nvm install-latest-npm                    Attempt to upgrade to the latest working `npm` on the current node version'
@@ -2509,6 +2520,10 @@ nvm() {
       NVM_UPGRADE_NPM=0
       while [ $# -ne 0 ]; do
         case "$1" in
+          ---*)
+            nvm_err 'arguments with `---` are not supported - this is likely a typo'
+            return 55;
+          ;;
           -s)
             shift # consume "-s"
             nobinary=1
@@ -3129,10 +3144,12 @@ nvm() {
     "ls" | "list")
       local PATTERN
       local NVM_NO_COLORS
+      local NVM_NO_ALIAS
       while [ $# -gt 0 ]; do
         case "${1}" in
           --) ;;
           --no-colors) NVM_NO_COLORS="${1}" ;;
+          --no-alias) NVM_NO_ALIAS="${1}" ;;
           --*)
             nvm_err "Unsupported option \"${1}\"."
             return 55
@@ -3143,12 +3160,16 @@ nvm() {
         esac
         shift
       done
+      if [ -n "${PATTERN-}" ] && [ -n "${NVM_NO_ALIAS}" ]; then
+        nvm_err '`--no-alias` is not supported when a pattern is provided.'
+        return 55
+      fi
       local NVM_LS_OUTPUT
       local NVM_LS_EXIT_CODE
       NVM_LS_OUTPUT=$(nvm_ls "${PATTERN-}")
       NVM_LS_EXIT_CODE=$?
       NVM_NO_COLORS="${NVM_NO_COLORS-}" nvm_print_versions "${NVM_LS_OUTPUT}"
-      if [ -z "${PATTERN-}" ]; then
+      if [ -z "${NVM_NO_ALIAS-}" ] && [ -z "${PATTERN-}" ]; then
         if [ -n "${NVM_NO_COLORS-}" ]; then
           nvm alias --no-colors
         else
