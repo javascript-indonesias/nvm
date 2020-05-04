@@ -549,7 +549,8 @@ nvm_remote_versions() {
   NVM_LS_REMOTE_POST_MERGED_OUTPUT=''
   if [ -z "${NVM_FLAVOR-}" ] || [ "${NVM_FLAVOR-}" = "${NVM_NODE_PREFIX}" ]; then
     local NVM_LS_REMOTE_OUTPUT
-    NVM_LS_REMOTE_OUTPUT=$(NVM_LTS="${NVM_LTS-}" nvm_ls_remote "${PATTERN-}") &&:
+    # extra space is needed here to avoid weird behavior when `nvm_ls_remote` ends in a `*`
+    NVM_LS_REMOTE_OUTPUT="$(NVM_LTS="${NVM_LTS-}" nvm_ls_remote "${PATTERN-}") " &&:
     NVM_LS_REMOTE_EXIT_CODE=$?
     # split output into two
     NVM_LS_REMOTE_PRE_MERGED_OUTPUT="${NVM_LS_REMOTE_OUTPUT%%v4\.0\.0*}"
@@ -567,15 +568,17 @@ nvm_remote_versions() {
     NVM_LS_REMOTE_IOJS_EXIT_CODE=$?
   fi
 
+  # the `sed` removes both blank lines, and only-whitespace lines (see "weird behavior" ~19 lines up)
   VERSIONS="$(nvm_echo "${NVM_LS_REMOTE_PRE_MERGED_OUTPUT}
 ${NVM_LS_REMOTE_IOJS_OUTPUT}
-${NVM_LS_REMOTE_POST_MERGED_OUTPUT}" | nvm_grep -v "N/A" | command sed '/^$/d')"
+${NVM_LS_REMOTE_POST_MERGED_OUTPUT}" | nvm_grep -v "N/A" | command sed '/^ *$/d')"
 
   if [ -z "${VERSIONS}" ]; then
     nvm_echo 'N/A'
     return 3
   fi
-  nvm_echo "${VERSIONS}"
+  # the `sed` is to remove trailing whitespaces (see "weird behavior" ~25 lines up)
+  nvm_echo "${VERSIONS}" | command sed 's/ *$//g'
   return $NVM_LS_REMOTE_EXIT_CODE || $NVM_LS_REMOTE_IOJS_EXIT_CODE
 }
 
@@ -852,8 +855,25 @@ nvm_alias() {
     return 1
   fi
 
+  local NVM_ALIAS_DIR
+  NVM_ALIAS_DIR="$(nvm_alias_path)"
+
+  if [ "$(expr "${ALIAS}" : '^lts/-[1-9][0-9]*$')" -gt 0 ]; then
+    local N
+    N="$(echo "${ALIAS}" | cut -d '-' -f 2)"
+    local RESULT
+    RESULT="$(command ls "${NVM_ALIAS_DIR}/lts" | command tail -n "${N}" | command head -n 1)"
+    if [ "${RESULT}" != '*' ]; then
+      nvm_alias "lts/${RESULT}"
+      return $?
+    else
+      nvm_err 'That many LTS releases do not exist yet.'
+      return 2
+    fi
+  fi
+
   local NVM_ALIAS_PATH
-  NVM_ALIAS_PATH="$(nvm_alias_path)/${ALIAS}"
+  NVM_ALIAS_PATH="${NVM_ALIAS_DIR}/${ALIAS}"
   if [ ! -f "${NVM_ALIAS_PATH}" ]; then
     nvm_err 'Alias does not exist.'
     return 2
@@ -1196,7 +1216,7 @@ nvm_ls_remote_index_tab() {
   PATTERN="${3-}"
 
   local VERSIONS
-  if [ -n "${PATTERN}" ]; then
+  if [ -n "${PATTERN}" ] && [ "${PATTERN}" != '*' ]; then
     if [ "${FLAVOR}" = 'iojs' ]; then
       PATTERN="$(nvm_ensure_version_prefix "$(nvm_strip_iojs_prefix "${PATTERN}")")"
     else
@@ -1239,12 +1259,20 @@ nvm_ls_remote_index_tab() {
       nvm_make_alias "${LTS_ALIAS}" "${LTS_VERSION}" >/dev/null 2>&1
     done
 
-  VERSIONS="$({ command awk -v pattern="${PATTERN-}" -v lts="${LTS-}" '{
+  VERSIONS="$({ command awk -v lts="${LTS-}" '{
         if (!$1) { next }
-        if (pattern && tolower($1) !~ tolower(pattern)) { next }
-        if (lts == "*" && $10 ~ /^\-?$/) { next }
+        if (lts && $10 ~ /^\-?$/) { next }
         if (lts && lts != "*" && tolower($10) !~ tolower(lts)) { next }
-        if ($10 !~ /^\-?$/) print $1, $10; else print $1
+        if ($10 !~ /^\-?$/) {
+          if ($10 && $10 != prev) {
+            print $1, $10, "*"
+          } else {
+            print $1, $10
+          }
+        } else {
+          print $1
+        }
+        prev=$10;
       }' \
     | nvm_grep -w "${PATTERN:-.*}" \
     | $SORT_COMMAND; } << EOF
@@ -1441,7 +1469,7 @@ nvm_print_versions() {
   local LTS_FORMAT
   nvm_echo "${1-}" \
   | command sed '1!G;h;$!d' \
-  | command awk '{ if ($2 && a[$2]++) { print $1, "(LTS: " $2 ")" } else if ($2) { print $1, "(Latest LTS: " $2 ")" } else { print $0 } }' \
+  | command awk '{ if ($2 && $3 && $3 == "*") { print $1, "(Latest LTS: " $2 ")" } else if ($2) { print $1, "(LTS: " $2 ")" } else { print $1 } }' \
   | command sed '1!G;h;$!d' \
   | while read -r VERSION_LINE; do
     VERSION="${VERSION_LINE%% *}"
@@ -2139,7 +2167,7 @@ nvm_npm_global_modules() {
   local NPMLIST
   local VERSION
   VERSION="$1"
-  NPMLIST=$(nvm use "${VERSION}" >/dev/null && npm list -g --depth=0 2>/dev/null | command sed 1,1d)
+  NPMLIST=$(nvm use "${VERSION}" >/dev/null && npm list -g --depth=0 2>/dev/null | command sed 1,1d | nvm_grep -v 'UNMET PEER DEPENDENCY')
 
   local INSTALLS
   INSTALLS=$(nvm_echo "${NPMLIST}" | command sed -e '/ -> / d' -e '/\(empty\)/ d' -e 's/^.* \(.*@[^ ]*\).*/\1/' -e '/^npm@[^ ]*.*$/ d' | command xargs)
@@ -2299,7 +2327,10 @@ nvm_check_file_permissions() {
   nvm_is_zsh && setopt local_options nonomatch
   for FILE in "$1"/* "$1"/.[!.]* "$1"/..?* ; do
     if [ -d "$FILE" ]; then
-      if ! nvm_check_file_permissions "$FILE"; then
+      if [ -n "${NVM_DEBUG-}" ]; then
+        nvm_err "${FILE}"
+      fi
+      if ! nvm_check_file_permissions "${FILE}"; then
         return 2
       fi
     elif [ -e "$FILE" ] && [ ! -w "$FILE" ] && [ ! -O "$FILE" ]; then
@@ -3502,7 +3533,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version")
-      nvm_echo '0.35.2'
+      nvm_echo '0.35.3'
     ;;
     "unload")
       nvm deactivate >/dev/null 2>&1
