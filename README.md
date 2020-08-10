@@ -35,6 +35,7 @@
       - [Calling `nvm use` automatically in a directory with a `.nvmrc` file](#calling-nvm-use-automatically-in-a-directory-with-a-nvmrc-file-1)
 - [License](#license)
 - [Running Tests](#running-tests)
+- [Environment variables](#environment-variables)
 - [Bash Completion](#bash-completion)
   - [Usage](#usage-1)
 - [Compatibility Issues](#compatibility-issues)
@@ -93,9 +94,11 @@ Since OS X 10.9, `/usr/bin/git` has been preset by Xcode command line tools, whi
 
 If you get `nvm: command not found` after running the install script, one of the following might be the reason:
 
-  - Your system may not have a `.bash_profile` file where the command is set up. Create one with `touch ~/.bash_profile` and run the install script again
+  - Since macOS 10.15, the default shell is `zsh` and nvm will look for `.zshrc` to update, none is installed by default. Create one with `touch ~/.zshrc` and run the install script again.
 
-  - You might need to restart your terminal instance. Try opening a new tab/window in your terminal and retry.
+  - If you use bash, the previous default shell, run `touch ~/.bash_profile` to create the necessary profile file if it does not exist.
+
+  - You might need to restart your terminal instance or run `. ~/.nvm/nvm.sh`. Restarting your terminal/opening a new tab/window, or running the source command will load the command and the new configuration.
 
 If the above doesn't fix the problem, you may try the following:
 
@@ -109,7 +112,7 @@ If the above doesn't fix the problem, you may try the following:
 
 You can use a task:
 
-```
+```yaml
 - name: nvm
   shell: >
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
@@ -287,6 +290,12 @@ Node has a [schedule](https://github.com/nodejs/Release#release-schedule) for lo
 
 Any time your local copy of `nvm` connects to https://nodejs.org, it will re-create the appropriate local aliases for all available LTS lines. These aliases (stored under `$NVM_DIR/alias/lts`), are managed by `nvm`, and you should not modify, remove, or create these files - expect your changes to be undone, and expect meddling with these files to cause bugs that will likely not be supported.
 
+To get the latest LTS version of node and migrate your existing installed packages, use
+
+```sh
+nvm install --lts --reinstall-packages-from=current
+```
+
 ### Migrating Global Packages While Installing
 
 If you want to install a new version of Node.js and migrate npm packages from a previous version:
@@ -462,7 +471,7 @@ find-up () {
 
 cdnvm(){
     cd "$@";
-    nvm_path=$(find-up .nvmrc | tr -d '[:space:]')
+    nvm_path=$(find-up .nvmrc | tr -d '\n')
 
     # If there are no .nvmrc file, use the default nvm version
     if [[ ! $nvm_path = *[^[:space:]]* ]]; then
@@ -561,7 +570,7 @@ function load_nvm --on-variable="PWD"
   if test -n "$nvmrc_path"
     set -l nvmrc_node_version (nvm version (cat $nvmrc_path))
     if test "$nvmrc_node_version" = "N/A"
-      nvm install $nvmrc_node_version
+      nvm install (cat $nvmrc_path)
     else if test nvmrc_node_version != node_version
       nvm use $nvmrc_node_version
     end
@@ -612,6 +621,19 @@ Run all of the tests like this:
     npm test
 
 Nota bene: Avoid running nvm while the tests are running.
+
+## Environment variables
+
+nvm exposes the following environment variables:
+
+- `NVM_DIR` - nvm's installation directory.
+- `NVM_BIN` - where node, npm, and global packages for the active version of node are installed.
+- `NVM_INC` - node's include file directory (useful for building C/C++ addons for node).
+- `NVM_CD_FLAGS` - used to maintain compatibility with zsh.
+- `NVM_RC_VERSION` - version from .nvmrc file if being used.
+
+Additionally, nvm modifies `PATH`, and, if present, `MANPATH` and `NODE_PATH` when changing versions.
+
 
 ## Bash Completion
 
@@ -782,6 +804,16 @@ sudo chmod ugo-x /usr/libexec/path_helper
 ```
 
 More on this issue in [dotphiles/dotzsh](https://github.com/dotphiles/dotzsh#mac-os-x).
+
+**nvm is not compatible with the npm config "prefix" option**
+
+Some solutions for this issue can be found [here](https://github.com/nvm-sh/nvm/issues/1245)
+
+There is one more edge case causing this issue, and that's a **mismatch between the `$HOME` path and the user's home directory's actual name**.
+
+You have to make sure that the user directory name in `$HOME` and the user directory name you'd see from running `ls /Users/` **are capitalized the same way** ([See this issue](https://github.com/nvm-sh/nvm/issues/2261)).
+
+To change the user directory and/or account name follow the instructions [here](https://support.apple.com/en-us/HT201548)
 
 [1]: https://github.com/nvm-sh/nvm.git
 [2]: https://github.com/nvm-sh/nvm/blob/v0.35.3/install.sh
