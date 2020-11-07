@@ -243,6 +243,12 @@ nvm_install_latest_npm() {
       fi
     fi
 
+    local NVM_IS_10_OR_ABOVE
+    NVM_IS_10_OR_ABOVE=0
+    if [ $NVM_IS_9_3_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 10.0.0; then
+      NVM_IS_10_OR_ABOVE=1
+    fi
+
     if [ $NVM_IS_4_4_OR_BELOW -eq 1 ] || {
       [ $NVM_IS_5_OR_ABOVE -eq 1 ] && nvm_version_greater 5.10.0 "${NODE_VERSION}"; \
     }; then
@@ -260,6 +266,9 @@ nvm_install_latest_npm() {
     ; then
       nvm_echo '* `npm` `v6.9` is the last version that works on `node` `v6.0.x`, `v6.1.x`, `v9.0.x`, `v9.1.x`, or `v9.2.x`'
       $NVM_NPM_CMD install -g npm@6.9
+    elif [ $NVM_IS_10_OR_ABOVE -eq 0 ]; then
+      nvm_echo '* `npm` `v6.x` is the last version that works on `node` below `v10.0.0`'
+      $NVM_NPM_CMD install -g npm@6
     else
       nvm_echo '* Installing latest `npm`; if this does not work on your node version, please report a bug!'
       $NVM_NPM_CMD install -g npm
@@ -317,6 +326,15 @@ nvm_tree_contains_path() {
   [ "${pathdir}" = "${tree}" ]
 }
 
+nvm_find_project_dir() {
+  local path_
+  path_="${PWD}"
+  while [ "${path_}" != "" ] && [ ! -f "${path_}/package.json" ] && [ ! -d "${path_}/node_modules" ]; do
+    path_=${path_%/*}
+  done
+  nvm_echo "${path_}"
+}
+
 # Traverse up in directory tree to find containing folder
 nvm_find_up() {
   local path_
@@ -341,15 +359,21 @@ nvm_rc_version() {
   local NVMRC_PATH
   NVMRC_PATH="$(nvm_find_nvmrc)"
   if [ ! -e "${NVMRC_PATH}" ]; then
-    nvm_err "No .nvmrc file found"
+    if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+      nvm_err "No .nvmrc file found"
+    fi
     return 1
   fi
   NVM_RC_VERSION="$(command head -n 1 "${NVMRC_PATH}" | command tr -d '\r')" || command printf ''
   if [ -z "${NVM_RC_VERSION}" ]; then
-    nvm_err "Warning: empty .nvmrc file found at \"${NVMRC_PATH}\""
+    if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+      nvm_err "Warning: empty .nvmrc file found at \"${NVMRC_PATH}\""
+    fi
     return 2
   fi
-  nvm_echo "Found '${NVMRC_PATH}' with version <${NVM_RC_VERSION}>"
+  if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+    nvm_echo "Found '${NVMRC_PATH}' with version <${NVM_RC_VERSION}>"
+  fi
 }
 
 nvm_clang_version() {
@@ -1065,6 +1089,7 @@ nvm_ls() {
     esac
 
     nvm_is_zsh && setopt local_options shwordsplit
+    nvm_is_zsh && unsetopt local_options markdirs
 
     local NVM_DIRS_TO_SEARCH1
     NVM_DIRS_TO_SEARCH1=''
@@ -1214,6 +1239,10 @@ nvm_ls_remote_index_tab() {
 
   local PATTERN
   PATTERN="${3-}"
+
+  if [ "${PATTERN#"${PATTERN%?}"}" = '.' ]; then
+    PATTERN="${PATTERN%.}"
+  fi
 
   local VERSIONS
   if [ -n "${PATTERN}" ] && [ "${PATTERN}" != '*' ]; then
@@ -2151,9 +2180,18 @@ nvm_npm_global_modules() {
   nvm_echo "${INSTALLS} //// ${LINKS}"
 }
 
+nvm_npmrc_bad_news_bears() {
+  local NVM_NPMRC
+  NVM_NPMRC="${1-}"
+  if [ -n "${NVM_NPMRC}" ] && [ -f "${NVM_NPMRC}" ] && nvm_grep -Ee '^(prefix|globalconfig) *=' <"${NVM_NPMRC}" >/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
 nvm_die_on_prefix() {
   local NVM_DELETE_PREFIX
-  NVM_DELETE_PREFIX="$1"
+  NVM_DELETE_PREFIX="${1-}"
   case "${NVM_DELETE_PREFIX}" in
     0 | 1) ;;
     *)
@@ -2162,9 +2200,11 @@ nvm_die_on_prefix() {
     ;;
   esac
   local NVM_COMMAND
-  NVM_COMMAND="$2"
-  if [ -z "${NVM_COMMAND}" ]; then
-    nvm_err 'Second argument "nvm command" must be nonempty'
+  NVM_COMMAND="${2-}"
+  local NVM_VERSION_DIR
+  NVM_VERSION_DIR="${3-}"
+  if [ -z "${NVM_COMMAND}" ] || [ -z "${NVM_VERSION_DIR}" ]; then
+    nvm_err 'Second argument "nvm command", and third argument "nvm version dir", must both be nonempty'
     return 2
   fi
 
@@ -2196,29 +2236,70 @@ nvm_die_on_prefix() {
     fi
   fi
 
-  if ! nvm_has 'npm'; then
-    return
+  # here, npm config checks npmrc files.
+  # the stack is: cli, env, project, user, global, builtin, defaults
+  # cli does not apply; env is covered above, defaults don't exist for prefix
+  # there are 4 npmrc locations to check: project, global, user, and builtin
+  # project: find the closest node_modules or package.json-containing dir, `.npmrc`
+  # global: default prefix + `/etc/npmrc`
+  # user: $HOME/.npmrc
+  # builtin: npm install location, `npmrc`
+  #
+  # if any of them have a `prefix`, fail.
+  # if any have `globalconfig`, fail also, just in case, to avoid spidering configs.
+
+  local NVM_NPM_BUILTIN_NPMRC
+  NVM_NPM_BUILTIN_NPMRC="${NVM_VERSION_DIR}/lib/node_modules/npm/npmrc"
+  if nvm_npmrc_bad_news_bears "${NVM_NPM_BUILTIN_NPMRC}"; then
+    if [ "_${NVM_DELETE_PREFIX}" = "_1" ]; then
+      npm config --loglevel=warn delete prefix --userconfig="${NVM_NPM_BUILTIN_NPMRC}"
+      npm config --loglevel=warn delete globalconfig --userconfig="${NVM_NPM_BUILTIN_NPMRC}"
+    else
+      nvm_err "Your builtin npmrc file ($(nvm_sanitize_path "${NVM_NPM_BUILTIN_NPMRC}"))"
+      nvm_err 'has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.'
+      nvm_err "Run \`${NVM_COMMAND}\` to unset it."
+      return 10
+    fi
   fi
 
-  local NVM_NPM_PREFIX
-  local NVM_OS
-  NVM_OS="$(nvm_get_os)"
-  NVM_NPM_PREFIX="$(npm config --loglevel=warn get prefix)"
-  if ! (nvm_tree_contains_path "${NVM_DIR}" "${NVM_NPM_PREFIX}" >/dev/null 2>&1); then
+  local NVM_NPM_GLOBAL_NPMRC
+  NVM_NPM_GLOBAL_NPMRC="${NVM_VERSION_DIR}/etc/npmrc"
+  if nvm_npmrc_bad_news_bears "${NVM_NPM_GLOBAL_NPMRC}"; then
+    if [ "_${NVM_DELETE_PREFIX}" = "_1" ]; then
+      npm config --global --loglevel=warn delete prefix
+      npm config --global --loglevel=warn delete globalconfig
+    else
+      nvm_err "Your global npmrc file ($(nvm_sanitize_path "${NVM_NPM_GLOBAL_NPMRC}"))"
+      nvm_err 'has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.'
+      nvm_err "Run \`${NVM_COMMAND}\` to unset it."
+      return 10
+    fi
+  fi
+
+  local NVM_NPM_USER_NPMRC
+  NVM_NPM_USER_NPMRC="${HOME}/.npmrc"
+  if nvm_npmrc_bad_news_bears "${NVM_NPM_USER_NPMRC}"; then
+    if [ "_${NVM_DELETE_PREFIX}" = "_1" ]; then
+      npm config --loglevel=warn delete prefix --userconfig="${NVM_NPM_USER_NPMRC}"
+      npm config --loglevel=warn delete globalconfig --userconfig="${NVM_NPM_USER_NPMRC}"
+    else
+      nvm_err "Your user’s .npmrc file ($(nvm_sanitize_path "${NVM_NPM_USER_NPMRC}"))"
+      nvm_err 'has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.'
+      nvm_err "Run \`${NVM_COMMAND}\` to unset it."
+      return 10
+    fi
+  fi
+
+  local NVM_NPM_PROJECT_NPMRC
+  NVM_NPM_PROJECT_NPMRC="$(nvm_find_project_dir)/.npmrc"
+  if nvm_npmrc_bad_news_bears "${NVM_NPM_PROJECT_NPMRC}"; then
     if [ "_${NVM_DELETE_PREFIX}" = "_1" ]; then
       npm config --loglevel=warn delete prefix
+      npm config --loglevel=warn delete globalconfig
     else
-      nvm deactivate >/dev/null 2>&1
-      nvm_err "nvm is not compatible with the npm config \"prefix\" option: currently set to \"${NVM_NPM_PREFIX}\""
-      if nvm_has 'npm'; then
-        nvm_err "Run \`npm config delete prefix\` or \`${NVM_COMMAND}\` to unset it."
-      else
-        nvm_err "Run \`${NVM_COMMAND}\` to unset it."
-      fi
-      if [ "${NVM_OS}" = 'darwin' ]; then
-        nvm_err "Make sure your username ($(whoami)) matches the one in your \$HOME path."
-        nvm_err "See the \"macOS Troubleshooting\" section in the docs for more information."
-      fi
+      nvm_err "Your project npmrc file ($(nvm_sanitize_path "${NVM_NPM_PROJECT_NPMRC}"))"
+      nvm_err 'has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.'
+      nvm_err "Run \`${NVM_COMMAND}\` to unset it."
       return 10
     fi
   fi
@@ -2367,7 +2448,9 @@ nvm() {
         nvm_echo 'Usage:'
         nvm_echo '  nvm --help                                  Show this message'
         nvm_echo '  nvm --version                               Print out the installed version of nvm'
-        nvm_echo '  nvm install [-s] [<version>]                Download and install a <version>, [-s] from source. Uses .nvmrc if available'
+        nvm_echo '  nvm install [<version>]                     Download and install a <version>. Uses .nvmrc if available and version is omitted.'
+        nvm_echo '   The following optional arguments, if provided, must appear directly after `nvm install`:'
+        nvm_echo '    -s                                        Skip binary download, install from source only.'
         nvm_echo '    --reinstall-packages-from=<version>       When installing, reinstall packages installed in <node|iojs|node version number>'
         nvm_echo '    --lts                                     When installing, only select from LTS (long-term support) versions'
         nvm_echo '    --lts=<LTS name>                          When installing, only select from versions for a specific LTS line'
@@ -2379,13 +2462,19 @@ nvm() {
         nvm_echo '  nvm uninstall <version>                     Uninstall a version'
         nvm_echo '  nvm uninstall --lts                         Uninstall using automatic LTS (long-term support) alias `lts/*`, if available.'
         nvm_echo '  nvm uninstall --lts=<LTS name>              Uninstall using automatic alias for provided LTS line, if available.'
-        nvm_echo '  nvm use [--silent] [<version>]              Modify PATH to use <version>. Uses .nvmrc if available'
+        nvm_echo '  nvm use [<version>]                         Modify PATH to use <version>. Uses .nvmrc if available and version is omitted.'
+        nvm_echo '   The following optional arguments, if provided, must appear directly after `nvm use`:'
+        nvm_echo '    --silent                                  Silences stdout/stderr output'
         nvm_echo '    --lts                                     Uses automatic LTS (long-term support) alias `lts/*`, if available.'
         nvm_echo '    --lts=<LTS name>                          Uses automatic alias for provided LTS line, if available.'
-        nvm_echo '  nvm exec [--silent] [<version>] [<command>] Run <command> on <version>. Uses .nvmrc if available'
+        nvm_echo '  nvm exec [<version>] [<command>]            Run <command> on <version>. Uses .nvmrc if available and version is omitted.'
+        nvm_echo '   The following optional arguments, if provided, must appear directly after `nvm exec`:'
+        nvm_echo '    --silent                                  Silences stdout/stderr output'
         nvm_echo '    --lts                                     Uses automatic LTS (long-term support) alias `lts/*`, if available.'
         nvm_echo '    --lts=<LTS name>                          Uses automatic alias for provided LTS line, if available.'
-        nvm_echo '  nvm run [--silent] [<version>] [<args>]     Run `node` on <version> with <args> as arguments. Uses .nvmrc if available'
+        nvm_echo '  nvm run [<version>] [<args>]                Run `node` on <version> with <args> as arguments. Uses .nvmrc if available and version is omitted.'
+        nvm_echo '   The following optional arguments, if provided, must appear directly after `nvm run`:'
+        nvm_echo '    --silent                                  Silences stdout/stderr output'
         nvm_echo '    --lts                                     Uses automatic LTS (long-term support) alias `lts/*`, if available.'
         nvm_echo '    --lts=<LTS name>                          Uses automatic alias for provided LTS line, if available.'
         nvm_echo '  nvm current                                 Display currently activated version of Node'
@@ -2401,6 +2490,7 @@ nvm() {
         nvm_echo '    --lts                                     When listing, only select from LTS (long-term support) versions'
         nvm_echo '    --lts=<LTS name>                          When listing, only select from versions for a specific LTS line'
         nvm_echo '  nvm deactivate                              Undo effects of `nvm` on current shell'
+        nvm_echo '    --silent                                  Silences stdout/stderr output'
         nvm_echo '  nvm alias [<pattern>]                       Show all aliases beginning with <pattern>'
         nvm_echo '    --no-colors                               Suppress colored output'
         nvm_echo '  nvm alias <name> <version>                  Set an alias named <name> pointing to <version>'
@@ -2408,7 +2498,8 @@ nvm() {
         nvm_echo '  nvm install-latest-npm                      Attempt to upgrade to the latest working `npm` on the current node version'
         nvm_echo '  nvm reinstall-packages <version>            Reinstall global `npm` packages contained in <version> to current version'
         nvm_echo '  nvm unload                                  Unload `nvm` from shell'
-        nvm_echo '  nvm which [current | <version>]             Display path to installed node version. Uses .nvmrc if available'
+        nvm_echo '  nvm which [current | <version>]             Display path to installed node version. Uses .nvmrc if available and version is omitted.'
+        nvm_echo '    --silent                                  Silences stdout/stderr output when a version is omitted'
         nvm_echo '  nvm cache dir                               Display path to the cache directory for nvm'
         nvm_echo '  nvm cache clear                             Empty cache directory for nvm'
         nvm_echo
@@ -2963,23 +3054,39 @@ nvm() {
       done
     ;;
     "deactivate")
+      local NVM_SILENT
+      while [ $# -ne 0 ]; do
+        case "${1}" in
+          --silent) NVM_SILENT=1 ;;
+          --) ;;
+        esac
+        shift
+      done
       local NEWPATH
       NEWPATH="$(nvm_strip_path "${PATH}" "/bin")"
       if [ "_${PATH}" = "_${NEWPATH}" ]; then
-        nvm_err "Could not find ${NVM_DIR}/*/bin in \${PATH}"
+        if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+          nvm_err "Could not find ${NVM_DIR}/*/bin in \${PATH}"
+        fi
       else
         export PATH="${NEWPATH}"
         hash -r
-        nvm_echo "${NVM_DIR}/*/bin removed from \${PATH}"
+        if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+          nvm_echo "${NVM_DIR}/*/bin removed from \${PATH}"
+        fi
       fi
 
       if [ -n "${MANPATH-}" ]; then
         NEWPATH="$(nvm_strip_path "${MANPATH}" "/share/man")"
         if [ "_${MANPATH}" = "_${NEWPATH}" ]; then
-          nvm_err "Could not find ${NVM_DIR}/*/share/man in \${MANPATH}"
+          if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+            nvm_err "Could not find ${NVM_DIR}/*/share/man in \${MANPATH}"
+          fi
         else
           export MANPATH="${NEWPATH}"
-          nvm_echo "${NVM_DIR}/*/share/man removed from \${MANPATH}"
+          if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+            nvm_echo "${NVM_DIR}/*/share/man removed from \${MANPATH}"
+          fi
         fi
       fi
 
@@ -2987,7 +3094,9 @@ nvm() {
         NEWPATH="$(nvm_strip_path "${NODE_PATH}" "/lib/node_modules")"
         if [ "_${NODE_PATH}" != "_${NEWPATH}" ]; then
           export NODE_PATH="${NEWPATH}"
-          nvm_echo "${NVM_DIR}/*/lib/node_modules removed from \${NODE_PATH}"
+          if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+            nvm_echo "${NVM_DIR}/*/lib/node_modules removed from \${NODE_PATH}"
+          fi
         fi
       fi
       unset NVM_BIN
@@ -2995,15 +3104,18 @@ nvm() {
     ;;
     "use")
       local PROVIDED_VERSION
-      local NVM_USE_SILENT
-      NVM_USE_SILENT=0
+      local NVM_SILENT
+      local NVM_SILENT_ARG
       local NVM_DELETE_PREFIX
       NVM_DELETE_PREFIX=0
       local NVM_LTS
 
       while [ $# -ne 0 ]; do
         case "$1" in
-          --silent) NVM_USE_SILENT=1 ;;
+          --silent)
+            NVM_SILENT=1
+            NVM_SILENT_ARG='--silent'
+          ;;
           --delete-prefix) NVM_DELETE_PREFIX=1 ;;
           --) ;;
           --lts) NVM_LTS='*' ;;
@@ -3021,7 +3133,7 @@ nvm() {
       if [ -n "${NVM_LTS-}" ]; then
         VERSION="$(nvm_match_version "lts/${NVM_LTS:-*}")"
       elif [ -z "${PROVIDED_VERSION-}" ]; then
-        nvm_rc_version
+        NVM_SILENT="${NVM_SILENT:-0}" nvm_rc_version
         if [ -n "${NVM_RC_VERSION-}" ]; then
           PROVIDED_VERSION="${NVM_RC_VERSION}"
           VERSION="$(nvm_version "${PROVIDED_VERSION}")"
@@ -3041,30 +3153,32 @@ nvm() {
       fi
 
       if [ "_${VERSION}" = '_system' ]; then
-        if nvm_has_system_node && nvm deactivate >/dev/null 2>&1; then
-          if [ $NVM_USE_SILENT -ne 1 ]; then
+        if nvm_has_system_node && nvm deactivate "${NVM_SILENT_ARG-}" >/dev/null 2>&1; then
+          if [ "${NVM_SILENT:-0}" -ne 1 ]; then
             nvm_echo "Now using system version of node: $(node -v 2>/dev/null)$(nvm_print_npm_version)"
           fi
           return
-        elif nvm_has_system_iojs && nvm deactivate >/dev/null 2>&1; then
-          if [ $NVM_USE_SILENT -ne 1 ]; then
+        elif nvm_has_system_iojs && nvm deactivate "${NVM_SILENT_ARG-}" >/dev/null 2>&1; then
+          if [ "${NVM_SILENT:-0}" -ne 1 ]; then
             nvm_echo "Now using system version of io.js: $(iojs --version 2>/dev/null)$(nvm_print_npm_version)"
           fi
           return
-        elif [ $NVM_USE_SILENT -ne 1 ]; then
+        elif [ "${NVM_SILENT:-0}" -ne 1 ]; then
           nvm_err 'System version of node not found.'
         fi
         return 127
       elif [ "_${VERSION}" = "_∞" ]; then
-        if [ $NVM_USE_SILENT -ne 1 ]; then
+        if [ "${NVM_SILENT:-0}" -ne 1 ]; then
           nvm_err "The alias \"${PROVIDED_VERSION}\" leads to an infinite loop. Aborting."
         fi
         return 8
       fi
       if [ "${VERSION}" = 'N/A' ]; then
-        nvm_err "N/A: version \"${PROVIDED_VERSION} -> ${VERSION}\" is not yet installed."
-        nvm_err ""
-        nvm_err "You need to run \"nvm install ${PROVIDED_VERSION}\" to install it before using it."
+        if [ "${NVM_SILENT:-0}" -ne 1 ]; then
+          nvm_err "N/A: version \"${PROVIDED_VERSION} -> ${VERSION}\" is not yet installed."
+          nvm_err ""
+          nvm_err "You need to run \"nvm install ${PROVIDED_VERSION}\" to install it before using it."
+        fi
         return 3
       # This nvm_ensure_version_installed call can be a performance bottleneck
       # on shell startup. Perhaps we can optimize it away or make it faster.
@@ -3095,7 +3209,7 @@ nvm() {
       fi
       local NVM_USE_OUTPUT
       NVM_USE_OUTPUT=''
-      if [ $NVM_USE_SILENT -ne 1 ]; then
+      if [ "${NVM_SILENT:-0}" -ne 1 ]; then
         if nvm_is_iojs_version "${VERSION}"; then
           NVM_USE_OUTPUT="Now using io.js $(nvm_strip_iojs_prefix "${VERSION}")$(nvm_print_npm_version)"
         else
@@ -3108,14 +3222,14 @@ nvm() {
         if [ -n "${PROVIDED_VERSION}" ]; then
           NVM_USE_CMD="${NVM_USE_CMD} ${VERSION}"
         fi
-        if [ $NVM_USE_SILENT -eq 1 ]; then
+        if [ "${NVM_SILENT:-0}" -eq 1 ]; then
           NVM_USE_CMD="${NVM_USE_CMD} --silent"
         fi
-        if ! nvm_die_on_prefix "${NVM_DELETE_PREFIX}" "${NVM_USE_CMD}"; then
+        if ! nvm_die_on_prefix "${NVM_DELETE_PREFIX}" "${NVM_USE_CMD}" "${NVM_VERSION_DIR}"; then
           return 11
         fi
       fi
-      if [ -n "${NVM_USE_OUTPUT-}" ]; then
+      if [ -n "${NVM_USE_OUTPUT-}" ] && [ "${NVM_SILENT:-0}" -ne 1 ]; then
         nvm_echo "${NVM_USE_OUTPUT}"
       fi
     ;;
@@ -3126,10 +3240,15 @@ nvm() {
       # run given version of node
 
       local NVM_SILENT
+      local NVM_SILENT_ARG
       local NVM_LTS
       while [ $# -gt 0 ]; do
         case "$1" in
-          --silent) NVM_SILENT='--silent' ; shift ;;
+          --silent)
+            NVM_SILENT=1
+            NVM_SILENT_ARG='--silent'
+            shift
+          ;;
           --lts) NVM_LTS='*' ; shift ;;
           --lts=*) NVM_LTS="${1##--lts=}" ; shift ;;
           *)
@@ -3143,11 +3262,7 @@ nvm() {
       done
 
       if [ $# -lt 1 ] && [ -z "${NVM_LTS-}" ]; then
-        if [ -n "${NVM_SILENT-}" ]; then
-          nvm_rc_version >/dev/null 2>&1 && has_checked_nvmrc=1
-        else
-          nvm_rc_version && has_checked_nvmrc=1
-        fi
+        NVM_SILENT="${NVM_SILENT:-0}" nvm_rc_version && has_checked_nvmrc=1
         if [ -n "${NVM_RC_VERSION-}" ]; then
           VERSION="$(nvm_version "${NVM_RC_VERSION-}")" ||:
         fi
@@ -3165,11 +3280,7 @@ nvm() {
           if [ "_${VERSION:-N/A}" = '_N/A' ] && ! nvm_is_valid_version "${provided_version}"; then
             provided_version=''
             if [ $has_checked_nvmrc -ne 1 ]; then
-              if [ -n "${NVM_SILENT-}" ]; then
-                nvm_rc_version >/dev/null 2>&1 && has_checked_nvmrc=1
-              else
-                nvm_rc_version && has_checked_nvmrc=1
-              fi
+              NVM_SILENT="${NVM_SILENT:-0}" nvm_rc_version && has_checked_nvmrc=1
             fi
             VERSION="$(nvm_version "${NVM_RC_VERSION}")" ||:
             unset NVM_RC_VERSION
@@ -3195,9 +3306,9 @@ nvm() {
       if [ "_${VERSION}" = "_N/A" ]; then
         nvm_ensure_version_installed "${provided_version}"
       elif [ "${NVM_IOJS}" = true ]; then
-        nvm exec "${NVM_SILENT-}" "${LTS_ARG-}" "${VERSION}" iojs "$@"
+        nvm exec "${NVM_SILENT_ARG-}" "${LTS_ARG-}" "${VERSION}" iojs "$@"
       else
-        nvm exec "${NVM_SILENT-}" "${LTS_ARG-}" "${VERSION}" node "$@"
+        nvm exec "${NVM_SILENT_ARG-}" "${LTS_ARG-}" "${VERSION}" node "$@"
       fi
       EXIT_CODE="$?"
       return $EXIT_CODE
@@ -3207,7 +3318,7 @@ nvm() {
       local NVM_LTS
       while [ $# -gt 0 ]; do
         case "$1" in
-          --silent) NVM_SILENT='--silent' ; shift ;;
+          --silent) NVM_SILENT=1 ; shift ;;
           --lts) NVM_LTS='*' ; shift ;;
           --lts=*) NVM_LTS="${1##--lts=}" ; shift ;;
           --) break ;;
@@ -3233,11 +3344,7 @@ nvm() {
       elif [ -n "${provided_version}" ]; then
         VERSION="$(nvm_version "${provided_version}")" ||:
         if [ "_${VERSION}" = '_N/A' ] && ! nvm_is_valid_version "${provided_version}"; then
-          if [ -n "${NVM_SILENT-}" ]; then
-            nvm_rc_version >/dev/null 2>&1
-          else
-            nvm_rc_version
-          fi
+          NVM_SILENT="${NVM_SILENT:-0}" nvm_rc_version && has_checked_nvmrc=1
           provided_version="${NVM_RC_VERSION}"
           unset NVM_RC_VERSION
           VERSION="$(nvm_version "${provided_version}")" ||:
@@ -3252,7 +3359,7 @@ nvm() {
         return $EXIT_CODE
       fi
 
-      if [ -z "${NVM_SILENT-}" ]; then
+      if [ "${NVM_SILENT:-0}" -ne 1 ]; then
         if [ "${NVM_LTS-}" = '*' ]; then
           nvm_echo "Running node latest LTS -> $(nvm_version "${VERSION}")$(nvm use --silent "${VERSION}" && nvm_print_npm_version)"
         elif [ -n "${NVM_LTS-}" ]; then
@@ -3350,19 +3457,27 @@ nvm() {
       nvm_version current
     ;;
     "which")
+      local NVM_SILENT
       local provided_version
-      provided_version="${1-}"
-      if [ $# -eq 0 ]; then
-        nvm_rc_version
+      while [ $# -ne 0 ]; do
+        case "${1}" in
+          --silent) NVM_SILENT=1 ;;
+          --) ;;
+          *) provided_version="${1-}" ;;
+        esac
+        shift
+      done
+      if [ -z "${provided_version-}" ]; then
+        NVM_SILENT="${NVM_SILENT:-0}" nvm_rc_version
         if [ -n "${NVM_RC_VERSION}" ]; then
           provided_version="${NVM_RC_VERSION}"
           VERSION=$(nvm_version "${NVM_RC_VERSION}") ||:
         fi
         unset NVM_RC_VERSION
-      elif [ "_${1}" != '_system' ]; then
+      elif [ "${provided_version}" != 'system' ]; then
         VERSION="$(nvm_version "${provided_version}")" ||:
       else
-        VERSION="${1-}"
+        VERSION="${provided_version-}"
       fi
       if [ -z "${VERSION}" ]; then
         >&2 nvm --help
@@ -3381,8 +3496,8 @@ nvm() {
         fi
         nvm_err 'System version of node not found.'
         return 127
-      elif [ "_${VERSION}" = "_∞" ]; then
-        nvm_err "The alias \"$2\" leads to an infinite loop. Aborting."
+      elif [ "${VERSION}" = '∞' ]; then
+        nvm_err "The alias \"${2}\" leads to an infinite loop. Aborting."
         return 8
       fi
 
@@ -3597,7 +3712,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" | "-v")
-      nvm_echo '0.35.3'
+      nvm_echo '0.37.0'
     ;;
     "unload")
       nvm deactivate >/dev/null 2>&1
@@ -3622,7 +3737,7 @@ nvm() {
         nvm_normalize_version nvm_is_valid_version \
         nvm_ensure_version_installed nvm_cache_dir \
         nvm_version_path nvm_alias_path nvm_version_dir \
-        nvm_find_nvmrc nvm_find_up nvm_tree_contains_path \
+        nvm_find_nvmrc nvm_find_up nvm_find_project_dir nvm_tree_contains_path \
         nvm_version_greater nvm_version_greater_than_or_equal_to \
         nvm_print_npm_version nvm_install_latest_npm nvm_npm_global_modules \
         nvm_has_system_node nvm_has_system_iojs \
@@ -3638,6 +3753,7 @@ nvm() {
         nvm_sanitize_path nvm_has_colors nvm_process_parameters \
         nvm_node_version_has_solaris_binary nvm_iojs_version_has_solaris_binary \
         nvm_curl_libz_support nvm_command_info nvm_is_zsh nvm_stdout_is_terminal \
+        nvm_npmrc_bad_news_bears \
         >/dev/null 2>&1
       unset NVM_RC_VERSION NVM_NODEJS_ORG_MIRROR NVM_IOJS_ORG_MIRROR NVM_DIR \
         NVM_CD_FLAGS NVM_BIN NVM_INC NVM_MAKE_JOBS \
@@ -3661,7 +3777,7 @@ nvm_get_default_packages() {
     # ensure a trailing newline
     WORK=$(mktemp -d) || exit $?
     # shellcheck disable=SC2064
-    trap "rm -rf '$WORK'" EXIT
+    trap "command rm -rf '$WORK'" EXIT
     # shellcheck disable=SC1003
     sed -e '$a\' "${NVM_DEFAULT_PACKAGE_FILE}" > "${WORK}/default-packages"
     while IFS=' ' read -r line; do
@@ -3681,7 +3797,7 @@ nvm_get_default_packages() {
 
       DEFAULT_PACKAGES="${DEFAULT_PACKAGES}${line} "
     done < "${WORK}/default-packages"
-    echo "${DEFAULT_PACKAGES}" | xargs
+    echo "${DEFAULT_PACKAGES}" | command xargs
   fi
 }
 
@@ -3758,11 +3874,10 @@ nvm_supports_xz() {
 }
 
 nvm_auto() {
-  local NVM_CURRENT
-  NVM_CURRENT="$(nvm_ls_current)"
   local NVM_MODE
   NVM_MODE="${1-}"
   local VERSION
+  local NVM_CURRENT
   if [ "_${NVM_MODE}" = '_install' ]; then
     VERSION="$(nvm_alias default 2>/dev/null || nvm_echo)"
     if [ -n "${VERSION}" ]; then
@@ -3771,6 +3886,7 @@ nvm_auto() {
       nvm install >/dev/null
     fi
   elif [ "_$NVM_MODE" = '_use' ]; then
+    NVM_CURRENT="$(nvm_ls_current)"
     if [ "_${NVM_CURRENT}" = '_none' ] || [ "_${NVM_CURRENT}" = '_system' ]; then
       VERSION="$(nvm_resolve_local_alias default 2>/dev/null || nvm_echo)"
       if [ -n "${VERSION}" ]; then

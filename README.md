@@ -1,4 +1,4 @@
-# Node Version Manager [![Build Status](https://travis-ci.org/nvm-sh/nvm.svg?branch=master)][3] [![nvm version](https://img.shields.io/badge/version-v0.35.3-yellow.svg)][4] [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/684/badge)](https://bestpractices.coreinfrastructure.org/projects/684)
+# Node Version Manager [![Build Status](https://travis-ci.org/nvm-sh/nvm.svg?branch=master)][3] [![nvm version](https://img.shields.io/badge/version-v0.37.0-yellow.svg)][4] [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/684/badge)](https://bestpractices.coreinfrastructure.org/projects/684)
 
 <!-- To update this table of contents, ensure you have run `npm install` then `npm run doctoc` -->
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
@@ -59,10 +59,10 @@ nvm is a version manager for [node.js](https://nodejs.org/en/), designed to be i
 
 To **install** or **update** nvm, you should run the [install script][2]. To do that, you may either download and run the script manually, or use the following cURL or Wget command:
 ```sh
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
 ```
 ```sh
-wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
 ```
 
 Running either of the above commands downloads a script and runs it. The script clones the nvm repository to `~/.nvm`, and attempts to add the source lines from the snippet below to the correct profile file (`~/.bash_profile`, `~/.zshrc`, `~/.profile`, or `~/.bashrc`).
@@ -115,7 +115,7 @@ You can use a task:
 ```yaml
 - name: nvm
   shell: >
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
   args:
     creates: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
 ```
@@ -174,7 +174,7 @@ If you have `git` installed (requires git v1.7.10+):
 
 1. clone this repo in the root of your user profile
   - `cd ~/` from anywhere then `git clone https://github.com/nvm-sh/nvm.git .nvm`
-1. `cd ~/.nvm` and check out the latest version with `git checkout v0.35.3`
+1. `cd ~/.nvm` and check out the latest version with `git checkout v0.37.0`
 1. activate `nvm` by sourcing it from your shell: `. nvm.sh`
 
 Now add these lines to your `~/.bashrc`, `~/.profile`, or `~/.zshrc` file to have it automatically sourced upon login:
@@ -293,7 +293,7 @@ Any time your local copy of `nvm` connects to https://nodejs.org, it will re-cre
 To get the latest LTS version of node and migrate your existing installed packages, use
 
 ```sh
-nvm install --lts --reinstall-packages-from=current
+nvm install 'lts/*' --reinstall-packages-from=current
 ```
 
 ### Migrating Global Packages While Installing
@@ -436,6 +436,8 @@ $ echo "lts/*" > .nvmrc # to default to the latest LTS version
 $ echo "node" > .nvmrc # to default to the latest version
 ```
 
+[NB these examples assume a POSIX-compliant shell version of `echo`. If you use a Windows `cmd` development environment, eg the `.nvmrc` file is used to configure a remote Linux deployment, then keep in mind the `"`s will be copied leading to an invalid file. Remove them.]
+
 Then when you run nvm:
 
 ```sh
@@ -461,7 +463,7 @@ If you prefer a lighter-weight solution, the recipes below have been contributed
 Put the following at the end of your `$HOME/.bashrc`:
 
 ```bash
-find-up () {
+find-up() {
     path=$(pwd)
     while [[ "$path" != "" && ! -e "$path/$1" ]]; do
         path=${path%/*}
@@ -469,7 +471,7 @@ find-up () {
     echo "$path"
 }
 
-cdnvm(){
+cdnvm() {
     cd "$@";
     nvm_path=$(find-up .nvmrc | tr -d '\n')
 
@@ -512,6 +514,7 @@ cdnvm(){
     fi
 }
 alias cd='cdnvm'
+cd $PWD
 ```
 
 This alias would search 'up' from your current directory in order to detect a `.nvmrc` file. If it finds it, it will switch to that version; if not, it will use the default version.
@@ -651,36 +654,36 @@ nvm:
 > $ nvm <kbd>Tab</kbd>
 
 ```
-alias               deactivate          install             ls                  run                 unload
-clear-cache         exec                list                ls-remote           unalias             use
-current             help                list-remote         reinstall-packages  uninstall           version
+alias               deactivate          install             list-remote         reinstall-packages  uninstall           version
+cache               exec                install-latest-npm  ls                  run                 unload              version-remote
+current             help                list                ls-remote           unalias             use                 which
 ```
 
 nvm alias:
 > $ nvm alias <kbd>Tab</kbd>
 
 ```
-default
+default      iojs         lts/*        lts/argon    lts/boron    lts/carbon   lts/dubnium  lts/erbium   node         stable       unstable
 ```
 
 > $ nvm alias my_alias <kbd>Tab</kbd>
 
 ```
-v0.6.21        v0.8.26       v0.10.28
+v10.22.0       v12.18.3      v14.8.0
 ```
 
 nvm use:
 > $ nvm use <kbd>Tab</kbd>
 
 ```
-my_alias        default        v0.6.21        v0.8.26       v0.10.28
+my_alias        default        v10.22.0       v12.18.3      v14.8.0
 ```
 
 nvm uninstall:
 > $ nvm uninstall <kbd>Tab</kbd>
 
 ```
-my_alias        default        v0.6.21        v0.8.26       v0.10.28
+my_alias        default        v10.22.0       v12.18.3      v14.8.0
 ```
 
 ## Compatibility Issues
@@ -719,7 +722,7 @@ If installing nvm on Alpine Linux *is* still what you want or need to do, you sh
 
 ```sh
 apk add -U curl bash ca-certificates openssl ncurses coreutils python2 make gcc g++ libgcc linux-headers grep util-linux binutils findutils
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
 ```
 
 The Node project has some desire but no concrete plans (due to the overheads of building, testing and support) to offer Alpine-compatible binaries.
@@ -816,8 +819,8 @@ You have to make sure that the user directory name in `$HOME` and the user direc
 To change the user directory and/or account name follow the instructions [here](https://support.apple.com/en-us/HT201548)
 
 [1]: https://github.com/nvm-sh/nvm.git
-[2]: https://github.com/nvm-sh/nvm/blob/v0.35.3/install.sh
+[2]: https://github.com/nvm-sh/nvm/blob/v0.37.0/install.sh
 [3]: https://travis-ci.org/nvm-sh/nvm
-[4]: https://github.com/nvm-sh/nvm/releases/tag/v0.35.3
+[4]: https://github.com/nvm-sh/nvm/releases/tag/v0.37.0
 [Urchin]: https://github.com/scraperwiki/urchin
 [Fish]: http://fishshell.com

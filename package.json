@@ -1,6 +1,6 @@
 {
   "name": "nvm",
-  "version": "0.35.3",
+  "version": "0.37.0",
   "description": "Node Version Manager - Simple bash script to manage multiple active node.js versions",
   "directories": {
     "test": "test"
@@ -37,10 +37,10 @@
   "homepage": "https://github.com/nvm-sh/nvm",
   "devDependencies": {
     "dockerfile_lint": "^0.3.2",
+    "doctoc": "^1.2.0",
     "eclint": "^2.6.0",
     "replace": "^0.3.0",
     "semver": "^5.0.1",
-    "urchin": "^0.0.5",
-    "doctoc": "^1.2.0"
+    "urchin": "^0.0.5"
   }
 }
