@@ -1,4 +1,4 @@
-# Node Version Manager [![Build Status](https://travis-ci.org/nvm-sh/nvm.svg?branch=master)][3] [![nvm version](https://img.shields.io/badge/version-v0.37.0-yellow.svg)][4] [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/684/badge)](https://bestpractices.coreinfrastructure.org/projects/684)
+# Node Version Manager [![Build Status](https://travis-ci.org/nvm-sh/nvm.svg?branch=master)][3] [![nvm version](https://img.shields.io/badge/version-v0.37.2-yellow.svg)][4] [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/684/badge)](https://bestpractices.coreinfrastructure.org/projects/684)
 
 <!-- To update this table of contents, ensure you have run `npm install` then `npm run doctoc` -->
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
@@ -24,6 +24,8 @@
   - [io.js](#iojs)
   - [System Version of Node](#system-version-of-node)
   - [Listing Versions](#listing-versions)
+  - [Setting Custom Colors](#setting-custom-colors)
+    - [Persisting custom colors](#persisting-custom-colors)
     - [Suppressing colorized output](#suppressing-colorized-output)
   - [.nvmrc](#nvmrc)
   - [Deeper Shell Integration](#deeper-shell-integration)
@@ -49,7 +51,7 @@
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## About
-nvm is a version manager for [node.js](https://nodejs.org/en/), designed to be installed per-user, and invoked per-shell. `nvm` works on any POSIX-compliant shell (sh, dash, ksh, zsh, bash), in particular on these platforms:  unix, macOS, and windows WSL.
+nvm is a version manager for [node.js](https://nodejs.org/en/), designed to be installed per-user, and invoked per-shell. `nvm` works on any POSIX-compliant shell (sh, dash, ksh, zsh, bash), in particular on these platforms: unix, macOS, and windows WSL.
 
 <a id="installation-and-update"></a>
 <a id="install-script"></a>
@@ -59,10 +61,10 @@ nvm is a version manager for [node.js](https://nodejs.org/en/), designed to be i
 
 To **install** or **update** nvm, you should run the [install script][2]. To do that, you may either download and run the script manually, or use the following cURL or Wget command:
 ```sh
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash
 ```
 ```sh
-wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash
 ```
 
 Running either of the above commands downloads a script and runs it. The script clones the nvm repository to `~/.nvm`, and attempts to add the source lines from the snippet below to the correct profile file (`~/.bash_profile`, `~/.zshrc`, `~/.profile`, or `~/.bashrc`).
@@ -115,7 +117,7 @@ You can use a task:
 ```yaml
 - name: nvm
   shell: >
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash
   args:
     creates: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
 ```
@@ -174,8 +176,8 @@ If you have `git` installed (requires git v1.7.10+):
 
 1. clone this repo in the root of your user profile
   - `cd ~/` from anywhere then `git clone https://github.com/nvm-sh/nvm.git .nvm`
-1. `cd ~/.nvm` and check out the latest version with `git checkout v0.37.0`
-1. activate `nvm` by sourcing it from your shell: `. nvm.sh`
+1. `cd ~/.nvm` and check out the latest version with `git checkout v0.37.2`
+1. activate `nvm` by sourcing it from your shell: `. ./nvm.sh`
 
 Now add these lines to your `~/.bashrc`, `~/.profile`, or `~/.zshrc` file to have it automatically sourced upon login:
 (you may have to add to more than one of the above files)
@@ -380,12 +382,48 @@ If you want to see what versions are available to install:
 nvm ls-remote
 ```
 
+### Setting Custom Colors
+
+You can set five colors that will be used to display version and alias information. These colors replace the default colors.
+  Initial colors are: g b y r e
+
+  Color codes:
+
+    r/R = red / bold red
+
+    g/G = green / bold green
+
+    b/B = blue / bold blue
+
+    c/C = cyan / bold cyan
+
+    m/M = magenta / bold magenta
+
+    y/Y = yellow / bold yellow
+
+    k/K = black / bold black
+
+    e/W = light grey / white
+
+```sh
+nvm set-colors rgBcm
+```
+
+#### Persisting custom colors
+
+If you want the custom colors to persist after terminating the shell, export the NVM_COLORS variable in your shell profile. For example, if you want to use cyan, magenta, green, bold red and bold yellow, add the following line:
+
+```sh
+export NVM_COLORS='cmgRY'
+```
+
 #### Suppressing colorized output
 
-`nvm ls`, `nvm ls-remote` and `nvm alias` usually produce colorized output. You can disable colors with the `--no-colors` option (or by setting the environment variable `TERM=dumb`):
+`nvm help (or -h or --help)`, `nvm ls`, `nvm ls-remote` and `nvm alias` usually produce colorized output. You can disable colors with the `--no-colors` option (or by setting the environment variable `TERM=dumb`):
 
 ```sh
 nvm ls --no-colors
+nvm help --no-colors
 TERM=dumb nvm ls
 ```
 
@@ -722,7 +760,7 @@ If installing nvm on Alpine Linux *is* still what you want or need to do, you sh
 
 ```sh
 apk add -U curl bash ca-certificates openssl ncurses coreutils python2 make gcc g++ libgcc linux-headers grep util-linux binutils findutils
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash
 ```
 
 The Node project has some desire but no concrete plans (due to the overheads of building, testing and support) to offer Alpine-compatible binaries.
@@ -819,8 +857,17 @@ You have to make sure that the user directory name in `$HOME` and the user direc
 To change the user directory and/or account name follow the instructions [here](https://support.apple.com/en-us/HT201548)
 
 [1]: https://github.com/nvm-sh/nvm.git
-[2]: https://github.com/nvm-sh/nvm/blob/v0.37.0/install.sh
+[2]: https://github.com/nvm-sh/nvm/blob/v0.37.2/install.sh
 [3]: https://travis-ci.org/nvm-sh/nvm
-[4]: https://github.com/nvm-sh/nvm/releases/tag/v0.37.0
+[4]: https://github.com/nvm-sh/nvm/releases/tag/v0.37.2
 [Urchin]: https://github.com/scraperwiki/urchin
 [Fish]: http://fishshell.com
+
+**Homebrew makes zsh directories unsecure**
+
+```shell
+zsh compinit: insecure directories, run compaudit for list.
+Ignore insecure directories and continue [y] or abort compinit [n]? y
+```
+
+Homebrew causes insecure directories like `/usr/local/share/zsh/site-functions` and `/usr/local/share/zsh`. This is **not** an `nvm` problem - it is a homebrew problem. Refer [here](https://github.com/zsh-users/zsh-completions/issues/680) for some solutions related to the issue.
