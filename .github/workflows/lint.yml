@@ -7,32 +7,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: ljharb/actions/node/run@main
-        name: 'npm install && npm run eclint'
+      - uses: ljharb/actions/node/install@main
+        name: 'nvm install ${{ matrix.node-version }} && npm install'
         with:
           node-version: 'lts/*'
-          command: 'eclint'
+      - run: npm run eclint
 
   dockerfile_lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: ljharb/actions/node/run@main
-        name: 'npm install && npm run dockerfile_lint'
+      - uses: ljharb/actions/node/install@main
+        name: 'nvm install ${{ matrix.node-version }} && npm install'
         with:
           node-version: 'lts/*'
-          command: 'dockerfile_lint'
+      - run: npm run dockerfile_lint
 
   doctoc:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: ljharb/actions/node/run@main
-        name: 'npm install && npm run dockerfile_lint'
+      - uses: ljharb/actions/node/install@main
+        name: 'nvm install ${{ matrix.node-version }} && npm install'
         with:
           node-version: 'lts/*'
-          shell-command: |
-            set -e
-            cp README.md README.md.orig
-            npm run doctoc
-            diff -q README.md README.md.orig
+      - run: npm run doctoc:check
+
+  test_naming:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: check tests filenames
+        run: ./rename_test.sh --check
