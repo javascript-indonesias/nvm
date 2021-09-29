@@ -5,6 +5,7 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 ## Table of Contents
 
+- [Intro](#intro)
 - [About](#about)
 - [Installing and Updating](#installing-and-updating)
   - [Install & Update Script](#install--update-script)
@@ -55,6 +56,29 @@
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
+## Intro
+
+`nvm` allows you to quickly install and use different versions of node via the command line.
+
+**Example:**
+```sh
+$ nvm use 16
+Now using node v16.9.1 (npm v7.21.1)
+$ node -v
+v16.9.1
+$ nvm use 14
+Now using node v14.18.0 (npm v6.14.15)
+$ node -v
+v14.18.0
+$ nvm install 12
+Now using node v12.22.6 (npm v6.14.5)
+$ node -v
+v12.22.6
+```
+
+Simple as that!
+
+
 ## About
 nvm is a version manager for [node.js](https://nodejs.org/en/), designed to be installed per-user, and invoked per-shell. `nvm` works on any POSIX-compliant shell (sh, dash, ksh, zsh, bash), in particular on these platforms: unix, macOS, and windows WSL.
 
@@ -94,7 +118,7 @@ Eg: `curl ... | NVM_DIR="path/to/nvm"`. Ensure that the `NVM_DIR` does not conta
 #### Troubleshooting on Linux
 
 On Linux, after running the install script, if you get `nvm: command not found` or see no feedback from your terminal after you type `command -v nvm`, simply close your current terminal, open a new terminal, and try verifying again.
-Alternatively, you can run run the following commands for the different shells on the command line:
+Alternatively, you can run the following commands for the different shells on the command line:
 
 *bash*: `source ~/.bashrc`
 
@@ -150,11 +174,13 @@ command -v nvm
 
 which should output `nvm` if the installation was successful. Please note that `which nvm` will not work, since `nvm` is a sourced shell function, not an executable binary.
 
+**Note:** On Linux, after running the install script, if you get `nvm: command not found` or see no feedback from your terminal after you type `command -v nvm`, simply close your current terminal, open a new terminal, and try verifying again.
+
 ### Important Notes
 
 If you're running a system without prepackaged binary available, which means you're going to install nodejs or io.js from its source code, you need to make sure your system has a C++ compiler. For OS X, Xcode will work, for Debian/Ubuntu based GNU/Linux, the `build-essential` and `libssl-dev` packages work.
 
-**Note:** `nvm` also support Windows in some cases. It should work through WSL (Windows Subsystem for Linux) depending on the version of WSL. It should also work with [GitBash](https://gitforwindows.org/) (MSYS) or [Cygwin](https://cygwin.com). Otherwise, for Windows, afew alternatives exist, which are neither supported nor developed by us:
+**Note:** `nvm` also support Windows in some cases. It should work through WSL (Windows Subsystem for Linux) depending on the version of WSL. It should also work with [GitBash](https://gitforwindows.org/) (MSYS) or [Cygwin](https://cygwin.com). Otherwise, for Windows, a few alternatives exist, which are neither supported nor developed by us:
 
   - [nvm-windows](https://github.com/coreybutler/nvm-windows)
   - [nodist](https://github.com/marcelklehr/nodist)
@@ -255,7 +281,7 @@ nvm install node # "node" is an alias for the latest version
 To install a specific version of node:
 
 ```sh
-nvm install 6.14.4 # or 10.10.0, 8.9.1, etc
+nvm install 14.7.0 # or 16.3.0, 12.22.1, etc
 ```
 
 The first version installed becomes the default. New shells will start with the default version of node (e.g., `nvm alias default`).
@@ -287,10 +313,10 @@ nvm exec 4.2 node --version
 You can also get the path to the executable to where it was installed:
 
 ```sh
-nvm which 5.0
+nvm which 12.22
 ```
 
-In place of a version pointer like "0.10" or "5.0" or "4.2.1", you can use the following special default aliases with `nvm install`, `nvm use`, `nvm run`, `nvm exec`, `nvm which`, etc:
+In place of a version pointer like "14.7" or "16.3" or "12.22.1", you can use the following special default aliases with `nvm install`, `nvm use`, `nvm run`, `nvm exec`, `nvm which`, etc:
 
   - `node`: this installs the latest version of [`node`](https://nodejs.org/en/)
   - `iojs`: this installs the latest version of [`io.js`](https://iojs.org/en/)
@@ -524,7 +550,7 @@ Put the following at the end of your `$HOME/.bashrc`:
 
 ```bash
 cdnvm() {
-    cd "$@";
+    command cd "$@";
     nvm_path=$(nvm_find_up .nvmrc | tr -d '\n')
 
     # If there are no .nvmrc file, use the default nvm version
@@ -566,7 +592,7 @@ cdnvm() {
     fi
 }
 alias cd='cdnvm'
-cd $PWD
+cd "$PWD"
 ```
 
 This alias would search 'up' from your current directory in order to detect a `.nvmrc` file. If it finds it, it will switch to that version; if not, it will use the default version.
@@ -788,7 +814,7 @@ export NVM_DIR="$HOME/.nvm"
 
 ## Docker For Development Environment
 
-To make the development and testing work easier, we have a Dockerfile for development usage, which is based on Ubuntu 14.04 base image, prepared with essential and useful tools for `nvm` development, to build the docker image of the environment, run the docker command at the root of `nvm` repository:
+To make the development and testing work easier, we have a Dockerfile for development usage, which is based on Ubuntu 18.04 base image, prepared with essential and useful tools for `nvm` development, to build the docker image of the environment, run the docker command at the root of `nvm` repository:
 
 ```sh
 $ docker build -t nvm-dev .
