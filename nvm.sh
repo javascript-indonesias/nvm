@@ -268,6 +268,31 @@ nvm_install_latest_npm() {
     if [ $NVM_IS_9_3_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 10.0.0; then
       NVM_IS_10_OR_ABOVE=1
     fi
+    local NVM_IS_12_LTS_OR_ABOVE
+    NVM_IS_12_LTS_OR_ABOVE=0
+    if [ $NVM_IS_10_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 12.13.0; then
+      NVM_IS_12_LTS_OR_ABOVE=1
+    fi
+    local NVM_IS_13_OR_ABOVE
+    NVM_IS_13_OR_ABOVE=0
+    if [ $NVM_IS_12_LTS_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 13.0.0; then
+      NVM_IS_13_OR_ABOVE=1
+    fi
+    local NVM_IS_14_LTS_OR_ABOVE
+    NVM_IS_14_LTS_OR_ABOVE=0
+    if [ $NVM_IS_13_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 14.15.0; then
+      NVM_IS_14_LTS_OR_ABOVE=1
+    fi
+    local NVM_IS_15_OR_ABOVE
+    NVM_IS_15_OR_ABOVE=0
+    if [ $NVM_IS_14_LTS_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 15.0.0; then
+      NVM_IS_15_OR_ABOVE=1
+    fi
+    local NVM_IS_16_OR_ABOVE
+    NVM_IS_16_OR_ABOVE=0
+    if [ $NVM_IS_15_OR_ABOVE -eq 1 ] && nvm_version_greater_than_or_equal_to "${NODE_VERSION}" 16.0.0; then
+      NVM_IS_16_OR_ABOVE=1
+    fi
 
     if [ $NVM_IS_4_4_OR_BELOW -eq 1 ] || {
       [ $NVM_IS_5_OR_ABOVE -eq 1 ] && nvm_version_greater 5.10.0 "${NODE_VERSION}"; \
@@ -289,6 +314,13 @@ nvm_install_latest_npm() {
     elif [ $NVM_IS_10_OR_ABOVE -eq 0 ]; then
       nvm_echo '* `npm` `v6.x` is the last version that works on `node` below `v10.0.0`'
       $NVM_NPM_CMD install -g npm@6
+    elif \
+      [ $NVM_IS_12_LTS_OR_ABOVE -eq 0 ] \
+      || { [ $NVM_IS_13_OR_ABOVE -eq 1 ] && [ $NVM_IS_14_LTS_OR_ABOVE -eq 0 ]; } \
+      || { [ $NVM_IS_15_OR_ABOVE -eq 1 ] && [ $NVM_IS_16_OR_ABOVE -eq 0 ]; } \
+    ; then
+      nvm_echo '* `npm` `v7.x` is the last version that works on `node` `v13`, `v15`, below `v12.13`, or `v14.0` - `v14.15`'
+      $NVM_NPM_CMD install -g npm@7
     else
       nvm_echo '* Installing latest `npm`; if this does not work on your node version, please report a bug!'
       $NVM_NPM_CMD install -g npm
@@ -602,7 +634,7 @@ nvm_remote_versions() {
     NVM_LS_REMOTE_EXIT_CODE=$?
     # split output into two
     NVM_LS_REMOTE_PRE_MERGED_OUTPUT="${NVM_LS_REMOTE_OUTPUT%%v4\.0\.0*}"
-    NVM_LS_REMOTE_POST_MERGED_OUTPUT="${NVM_LS_REMOTE_OUTPUT#$NVM_LS_REMOTE_PRE_MERGED_OUTPUT}"
+    NVM_LS_REMOTE_POST_MERGED_OUTPUT="${NVM_LS_REMOTE_OUTPUT#"$NVM_LS_REMOTE_PRE_MERGED_OUTPUT"}"
   fi
 
   local NVM_LS_REMOTE_IOJS_EXIT_CODE
@@ -908,7 +940,7 @@ nvm_print_alias_path() {
     return 2
   fi
   local ALIAS
-  ALIAS="${ALIAS_PATH##${NVM_ALIAS_DIR}\/}"
+  ALIAS="${ALIAS_PATH##"${NVM_ALIAS_DIR}"\/}"
   local DEST
   DEST="$(nvm_alias "${ALIAS}" 2>/dev/null)" ||:
   if [ -n "${DEST}" ]; then
@@ -1154,7 +1186,7 @@ nvm_strip_iojs_prefix() {
   if [ "${1-}" = "${NVM_IOJS_PREFIX}" ]; then
     nvm_echo
   else
-    nvm_echo "${1#${NVM_IOJS_PREFIX}-}"
+    nvm_echo "${1#"${NVM_IOJS_PREFIX}"-}"
   fi
 }
 
@@ -2284,7 +2316,7 @@ nvm_install_source() {
   make='make'
   local MAKE_CXX
   case "${NVM_OS}" in
-    'freebsd')
+    'freebsd' | 'openbsd')
       make='gmake'
       MAKE_CXX="CC=${CC:-cc} CXX=${CXX:-c++}"
     ;;
@@ -2456,11 +2488,7 @@ nvm_die_on_prefix() {
   # here, we avoid trying to replicate "which one wins" or testing the value; if any are defined, it errors
   # until none are left.
   local NVM_NPM_CONFIG_x_PREFIX_ENV
-  if [ -n "${BASH_SOURCE-}" ]; then
-    NVM_NPM_CONFIG_x_PREFIX_ENV="$(command set | command awk -F '=' '! /^[0-9A-Z_a-z]+=/ {skip=1} skip==0 {print $1}' | nvm_grep -i NPM_CONFIG_PREFIX | command tail -1)"
-  else
-    NVM_NPM_CONFIG_x_PREFIX_ENV="$(command env | nvm_grep -i NPM_CONFIG_PREFIX | command tail -1 | command awk -F '=' '{print $1}')"
-  fi
+  NVM_NPM_CONFIG_x_PREFIX_ENV="$(command awk 'BEGIN { for (name in ENVIRON) if (toupper(name) == "NPM_CONFIG_PREFIX") { print name; break } }')"
   if [ -n "${NVM_NPM_CONFIG_x_PREFIX_ENV-}" ]; then
     local NVM_CONFIG_VALUE
     eval "NVM_CONFIG_VALUE=\"\$${NVM_NPM_CONFIG_x_PREFIX_ENV}\""
@@ -2586,7 +2614,7 @@ nvm_node_version_has_solaris_binary() {
 # Succeeds if $VERSION represents a version (node, io.js or merged) that has a
 # Solaris binary, fails otherwise.
 nvm_has_solaris_binary() {
-  local VERSION=$1
+  local VERSION="${1-}"
   if nvm_is_merged_node_version "${VERSION}"; then
     return 0 # All merged node versions have a Solaris binary
   elif nvm_is_iojs_version "${VERSION}"; then
@@ -3245,6 +3273,10 @@ nvm() {
           # node.js and io.js do not have a FreeBSD binary
           nobinary=1
           nvm_err "Currently, there is no binary for FreeBSD"
+        elif [ "_$NVM_OS" = "_openbsd" ]; then
+          # node.js and io.js do not have a OpenBSD binary
+          nobinary=1
+          nvm_err "Currently, there is no binary for OpenBSD"
         elif [ "_${NVM_OS}" = "_sunos" ]; then
           # Not all node/io.js versions have a Solaris binary
           if ! nvm_has_solaris_binary "${VERSION}"; then
@@ -4041,7 +4073,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" | "-v")
-      nvm_echo '0.38.0'
+      nvm_echo '0.39.0'
     ;;
     "unload")
       nvm deactivate >/dev/null 2>&1
