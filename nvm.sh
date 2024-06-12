@@ -467,7 +467,89 @@ nvm_find_nvmrc() {
   fi
 }
 
-# Obtain nvm version from rc file
+nvm_nvmrc_invalid_msg() {
+  local error_text
+  error_text="invalid .nvmrc!
+all non-commented content (anything after # is a comment) must be either:
+  - a single bare nvm-recognized version-ish
+  - or, multiple distinct key-value pairs, each key/value separated by a single equals sign (=)
+
+additionally, a single bare nvm-recognized version-ish must be present (after stripping comments)."
+
+  local warn_text
+  warn_text="non-commented content parsed:
+${1}"
+
+  nvm_err "$(nvm_wrap_with_color_code r "${error_text}")
+
+$(nvm_wrap_with_color_code y "${warn_text}")"
+}
+
+nvm_process_nvmrc() {
+  local NVMRC_PATH="$1"
+  local lines
+  local unpaired_line
+
+  lines=$(command sed 's/#.*//' "$NVMRC_PATH" | command sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | nvm_grep -v '^$')
+
+  if [ -z "$lines" ]; then
+    nvm_nvmrc_invalid_msg "${lines}"
+    return 1
+  fi
+
+  # Initialize key-value storage
+  local keys=''
+  local values=''
+
+  while IFS= read -r line; do
+    if [ -z "${line}" ]; then
+      continue
+    elif [ -z "${line%%=*}" ]; then
+      if [ -n "${unpaired_line}" ]; then
+        nvm_nvmrc_invalid_msg "${lines}"
+        return 1
+      fi
+      unpaired_line="${line}"
+    elif case "$line" in *'='*) true;; *) false;; esac; then
+      key="${line%%=*}"
+      value="${line#*=}"
+
+      # Trim whitespace around key and value
+      key=$(nvm_echo "${key}" | command sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      value=$(nvm_echo "${value}" | command sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+      # Check for invalid key "node"
+      if [ "${key}" = 'node' ]; then
+        nvm_nvmrc_invalid_msg "${lines}"
+        return 1
+      fi
+
+      # Check for duplicate keys
+      if nvm_echo "${keys}" | nvm_grep -q -E "(^| )${key}( |$)"; then
+        nvm_nvmrc_invalid_msg "${lines}"
+        return 1
+      fi
+      keys="${keys} ${key}"
+      values="${values} ${value}"
+    else
+      if [ -n "${unpaired_line}" ]; then
+        nvm_nvmrc_invalid_msg "${lines}"
+        return 1
+      fi
+      unpaired_line="${line}"
+    fi
+  done <<EOF
+$lines
+EOF
+
+  if [ -z "${unpaired_line}" ]; then
+    nvm_nvmrc_invalid_msg "${lines}"
+    return 1
+  fi
+
+  nvm_echo "${unpaired_line}"
+}
+
 nvm_rc_version() {
   export NVM_RC_VERSION=''
   local NVMRC_PATH
@@ -478,7 +560,12 @@ nvm_rc_version() {
     fi
     return 1
   fi
-  NVM_RC_VERSION="$(command head -n 1 "${NVMRC_PATH}" | command tr -d '\r')" || command printf ''
+
+
+  if ! NVM_RC_VERSION="$(nvm_process_nvmrc "${NVMRC_PATH}")"; then
+    return 1
+  fi
+
   if [ -z "${NVM_RC_VERSION}" ]; then
     if [ "${NVM_SILENT:-0}" -ne 1 ]; then
       nvm_err "Warning: empty .nvmrc file found at \"${NVMRC_PATH}\""
@@ -756,23 +843,31 @@ nvm_normalize_lts() {
   local LTS
   LTS="${1-}"
 
-  if [ "$(expr "${LTS}" : '^lts/-[1-9][0-9]*$')" -gt 0 ]; then
-    local N
-    N="$(echo "${LTS}" | cut -d '-' -f 2)"
-    N=$((N+1))
-    local NVM_ALIAS_DIR
-    NVM_ALIAS_DIR="$(nvm_alias_path)"
-    local RESULT
-    RESULT="$(command ls "${NVM_ALIAS_DIR}/lts" | command tail -n "${N}" | command head -n 1)"
-    if [ "${RESULT}" != '*' ]; then
-      nvm_echo "lts/${RESULT}"
-    else
-      nvm_err 'That many LTS releases do not exist yet.'
-      return 2
-    fi
-  else
-    nvm_echo "${LTS}"
-  fi
+  case "${LTS}" in
+    lts/-[123456789] | lts/-[123456789][0123456789]*)
+      local N
+      N="$(echo "${LTS}" | cut -d '-' -f 2)"
+      N=$((N+1))
+      # shellcheck disable=SC2181
+      if [ $? -ne 0 ]; then
+        nvm_echo "${LTS}"
+        return 0
+      fi
+      local NVM_ALIAS_DIR
+      NVM_ALIAS_DIR="$(nvm_alias_path)"
+      local RESULT
+      RESULT="$(command ls "${NVM_ALIAS_DIR}/lts" | command tail -n "${N}" | command head -n 1)"
+      if [ "${RESULT}" != '*' ]; then
+        nvm_echo "lts/${RESULT}"
+      else
+        nvm_err 'That many LTS releases do not exist yet.'
+        return 2
+      fi
+    ;;
+    *)
+      nvm_echo "${LTS}"
+    ;;
+  esac
 }
 
 nvm_ensure_version_prefix() {
@@ -1090,7 +1185,7 @@ nvm_list_aliases() {
       NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_CURRENT="${NVM_CURRENT}" nvm_print_alias_path "${NVM_ALIAS_DIR}" "${ALIAS_PATH}" &
     done
     wait
-  ) | sort
+  ) | command sort
 
   (
     local ALIAS_NAME
@@ -1103,7 +1198,7 @@ nvm_list_aliases() {
       } &
     done
     wait
-  ) | sort
+  ) | command sort
 
   (
     local LTS_ALIAS
@@ -1117,7 +1212,7 @@ nvm_list_aliases() {
       } &
     done
     wait
-  ) | sort
+  ) | command sort
   return
 }
 
@@ -1141,7 +1236,7 @@ nvm_alias() {
     return 2
   fi
 
-  command cat "${NVM_ALIAS_PATH}"
+  command awk 'NF' "${NVM_ALIAS_PATH}"
 }
 
 nvm_ls_current() {
@@ -1177,8 +1272,10 @@ nvm_resolve_alias() {
 
   local SEEN_ALIASES
   SEEN_ALIASES="${ALIAS}"
+  local NVM_ALIAS_INDEX
+  NVM_ALIAS_INDEX=1
   while true; do
-    ALIAS_TEMP="$(nvm_alias "${ALIAS}" 2>/dev/null || nvm_echo)"
+    ALIAS_TEMP="$( (nvm_alias "${ALIAS}" 2>/dev/null | command head -n "${NVM_ALIAS_INDEX}" | command tail -n 1) || nvm_echo)"
 
     if [ -z "${ALIAS_TEMP}" ]; then
       break
@@ -1955,6 +2052,10 @@ nvm_get_arch() {
     HOST_ARCH=armv7l
   fi
 
+  if [ -f "/etc/alpine-release" ]; then
+    NVM_ARCH=x64-musl
+  fi
+
   nvm_echo "${NVM_ARCH}"
 }
 
@@ -2009,14 +2110,31 @@ nvm_is_merged_node_version() {
 }
 
 nvm_get_mirror() {
+  local NVM_MIRROR
+  NVM_MIRROR=''
   case "${1}-${2}" in
-    node-std) nvm_echo "${NVM_NODEJS_ORG_MIRROR:-https://nodejs.org/dist}" ;;
-    iojs-std) nvm_echo "${NVM_IOJS_ORG_MIRROR:-https://iojs.org/dist}" ;;
+    node-std) NVM_MIRROR="${NVM_NODEJS_ORG_MIRROR:-https://nodejs.org/dist}" ;;
+    iojs-std) NVM_MIRROR="${NVM_IOJS_ORG_MIRROR:-https://iojs.org/dist}" ;;
     *)
       nvm_err 'unknown type of node.js or io.js release'
       return 1
     ;;
   esac
+
+  case "${NVM_MIRROR}" in
+    *\`* | *\\* | *\'* | *\(* | *' '* )
+      nvm_err '$NVM_NODEJS_ORG_MIRROR and $NVM_IOJS_ORG_MIRROR may only contain a URL'
+      return 2
+    ;;
+  esac
+
+
+  if ! nvm_echo "${NVM_MIRROR}" | command awk '{ $0 ~ "^https?://[a-zA-Z0-9./_-]+$" }'; then
+      nvm_err '$NVM_NODEJS_ORG_MIRROR and $NVM_IOJS_ORG_MIRROR may only contain a URL'
+      return 2
+  fi
+
+  nvm_echo "${NVM_MIRROR}"
 }
 
 # args: os, prefixed version, version, tarball, extract directory
@@ -2784,7 +2902,7 @@ nvm_check_file_permissions() {
       if [ -n "${NVM_DEBUG-}" ]; then
         nvm_err "${FILE}"
       fi
-      if ! nvm_check_file_permissions "${FILE}"; then
+      if [ ! -L "${FILE}" ] && ! nvm_check_file_permissions "${FILE}"; then
         return 2
       fi
     elif [ -e "$FILE" ] && [ ! -w "$FILE" ] && [ ! -O "$FILE" ]; then
@@ -3534,7 +3652,7 @@ nvm() {
         fi
       else
         export PATH="${NEWPATH}"
-        hash -r
+        \hash -r
         if [ "${NVM_SILENT:-0}" -ne 1 ]; then
           nvm_echo "${NVM_DIR}/*/bin removed from \${PATH}"
         fi
@@ -3666,7 +3784,7 @@ nvm() {
         export MANPATH
       fi
       export PATH
-      hash -r
+      \hash -r
       export NVM_BIN="${NVM_VERSION_DIR}/bin"
       export NVM_INC="${NVM_VERSION_DIR}/include/node"
       if [ "${NVM_SYMLINK_CURRENT-}" = true ]; then
@@ -4027,6 +4145,9 @@ nvm() {
         # so, unalias it.
         nvm unalias "${ALIAS}"
         return $?
+      elif echo "${ALIAS}" | grep -q "#"; then
+        nvm_err 'Aliases with a comment delimiter (#) are not supported.'
+        return 1
       elif [ "${TARGET}" != '--' ]; then
         # a target was passed: create an alias
         if [ "${ALIAS#*\/}" != "${ALIAS}" ]; then
@@ -4195,7 +4316,7 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" | "-v")
-      nvm_echo '0.39.5'
+      nvm_echo '0.39.7'
     ;;
     "unload")
       nvm deactivate >/dev/null 2>&1
@@ -4240,6 +4361,7 @@ nvm() {
         nvm_get_colors nvm_set_colors nvm_print_color_code nvm_wrap_with_color_code nvm_format_help_message_colors \
         nvm_echo_with_colors nvm_err_with_colors \
         nvm_get_artifact_compression nvm_install_binary_extract nvm_extract_tarball \
+        nvm_process_nvmrc nvm_nvmrc_invalid_msg \
         >/dev/null 2>&1
       unset NVM_RC_VERSION NVM_NODEJS_ORG_MIRROR NVM_IOJS_ORG_MIRROR NVM_DIR \
         NVM_CD_FLAGS NVM_BIN NVM_INC NVM_MAKE_JOBS \

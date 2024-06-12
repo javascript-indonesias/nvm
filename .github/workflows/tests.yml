@@ -2,6 +2,9 @@ name: urchin tests
 
 on: [push]
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     permissions:
@@ -26,7 +29,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v1
+        uses: step-security/harden-runner@v2
         with:
           allowed-endpoints:
             github.com:443
@@ -34,7 +37,7 @@ jobs:
             raw.githubusercontent.com:443
             nodejs.org:443
             iojs.org:443
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: sudo ${{ matrix.shell }} --version 2> /dev/null || dpkg -s ${{ matrix.shell }} 2> /dev/null || which ${{ matrix.shell }}
       - run: curl --version
       - run: wget --version
@@ -49,8 +52,10 @@ jobs:
       - run: make TERM=xterm-256color TEST_SUITE="${{ matrix.suite }}" SHELL="${{ matrix.shell }}" URCHIN="$(npx which urchin)" test-${{ matrix.shell }}
 
   nvm:
+    permissions:
+      contents: none
     name: 'all test suites, all shells'
     needs: [tests]
     runs-on: ubuntu-latest
     steps:
-      - run: 'echo tests completed'
+      - run: true
